@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.pnpm-store/
+.agents/
+.DS_Store
+*.local
+_tmp_*
+rename-test.*
+pnpm-lock.yaml.*
+
+# Keep real experimental text files out of the repository.
+*.txt
+!example-data/
+!example-data/*.txt
