@@ -222,6 +222,13 @@ label:has(input:disabled) {
   color: var(--teal-dark);
 }
 
+.plot-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .bulk-toolbar,
 .plot-controls,
 .axis-range-controls,

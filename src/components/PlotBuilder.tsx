@@ -3,6 +3,7 @@ import { Download, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LegendPosition, ProcessedRow, XAxisKey, YMode } from "../types";
 import { xAxisOptions, yModeOptions } from "../types";
+import { downloadTextFile, plotRowsToCsv } from "../utils/csv";
 import {
   buildPlotData,
   defaultTraceColors,
@@ -526,6 +527,18 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
     });
   };
 
+  const exportPlotCsv = () => {
+    if (rows.length === 0) {
+      return;
+    }
+
+    downloadTextFile(
+      "pd-ms-plot-data.csv",
+      plotRowsToCsv(rows, xAxis, yMode),
+      "text/csv;charset=utf-8",
+    );
+  };
+
   return (
     <section className="workspace-section">
       <div className="section-header">
@@ -533,15 +546,26 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
           <p className="section-kicker">Visualization</p>
           <h2>Plot</h2>
         </div>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={exportPng}
-          disabled={plotData.length === 0}
-        >
-          <Download size={16} aria-hidden="true" />
-          <span>Export PNG</span>
-        </button>
+        <div className="plot-export-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={exportPlotCsv}
+            disabled={rows.length === 0}
+          >
+            <Download size={16} aria-hidden="true" />
+            <span>Export plot CSV</span>
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={exportPng}
+            disabled={plotData.length === 0}
+          >
+            <Download size={16} aria-hidden="true" />
+            <span>Export PNG</span>
+          </button>
+        </div>
       </div>
 
       <div className="plot-tabs" role="tablist" aria-label="Plot settings">
