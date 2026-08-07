@@ -27,11 +27,11 @@ import {
 } from "./utils/filenameMetadata";
 import { suggestIonTargets } from "./utils/ionSuggestions";
 
-type WorkspaceTab = "setup" | "metadata" | "plot" | "data";
+type WorkspaceTab = "files" | "ions" | "plot" | "data";
 
 const workspaceTabs: Array<{ key: WorkspaceTab; label: string }> = [
-  { key: "setup", label: "Files & ions" },
-  { key: "metadata", label: "Metadata" },
+  { key: "files", label: "Files & metadata" },
+  { key: "ions", label: "Ions" },
   { key: "plot", label: "Plot" },
   { key: "data", label: "Data" },
 ];
@@ -65,7 +65,7 @@ function App() {
   const [projectName, setProjectName] = useState("pd-ms-project");
   const [projectStatus, setProjectStatus] = useState("");
   const [activeWorkspaceTab, setActiveWorkspaceTab] =
-    useState<WorkspaceTab>("setup");
+    useState<WorkspaceTab>("files");
 
   const numericIons = useMemo<NumericIonTarget[]>(
     () =>
@@ -307,7 +307,7 @@ function App() {
       <main className="app-main">
         <div
           className="workspace-tab-panel"
-          hidden={activeWorkspaceTab !== "setup"}
+          hidden={activeWorkspaceTab !== "files"}
         >
           <ProjectPanel
             projectName={projectName}
@@ -320,20 +320,6 @@ function App() {
             onFilesSelected={handleFilesSelected}
             isLoading={isLoadingFiles}
           />
-          <IonSelectionPanel
-            ions={ions}
-            tolerance={tolerance}
-            canSuggestIons={files.some((file) => file.peaks.length > 0)}
-            onIonsChange={setIons}
-            onToleranceChange={setTolerance}
-            onSuggestIons={suggestIonsFromSpectra}
-          />
-        </div>
-
-        <div
-          className="workspace-tab-panel"
-          hidden={activeWorkspaceTab !== "metadata"}
-        >
           <MetadataTable
             files={files}
             selectedIds={selectedIds}
@@ -345,6 +331,17 @@ function App() {
             onUpdateMetadata={updateMetadata}
             onApplyBulkMetadata={applyBulkMetadata}
             onRemoveSelected={removeSelected}
+          />
+        </div>
+
+        <div className="workspace-tab-panel" hidden={activeWorkspaceTab !== "ions"}>
+          <IonSelectionPanel
+            ions={ions}
+            tolerance={tolerance}
+            canSuggestIons={files.some((file) => file.peaks.length > 0)}
+            onIonsChange={setIons}
+            onToleranceChange={setTolerance}
+            onSuggestIons={suggestIonsFromSpectra}
           />
         </div>
 

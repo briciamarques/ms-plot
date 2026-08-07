@@ -604,6 +604,73 @@ label:has(input:disabled) {
   margin-bottom: 14px;
 }
 
+.plot-workbench {
+  display: grid;
+  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.plot-settings-panel {
+  display: grid;
+  gap: 14px;
+  max-height: calc(100vh - 150px);
+  min-width: 0;
+  overflow: auto;
+  padding-right: 4px;
+  position: sticky;
+  top: 14px;
+}
+
+.plot-preview-pane {
+  min-width: 0;
+  position: sticky;
+  top: 14px;
+}
+
+.plot-settings-panel .plot-tabs {
+  display: flex;
+  margin-bottom: 0;
+  width: 100%;
+}
+
+.plot-settings-panel .tab-button {
+  flex: 1;
+}
+
+.plot-settings-panel .plot-menu,
+.plot-settings-panel .style-panel {
+  margin-bottom: 0;
+}
+
+.plot-settings-panel .plot-controls,
+.plot-settings-panel .axis-range-controls,
+.plot-settings-panel .style-grid,
+.plot-settings-panel .color-settings-grid {
+  grid-template-columns: 1fr;
+}
+
+.plot-settings-panel .legend-controls,
+.plot-settings-panel .inside-legend-controls,
+.plot-settings-panel .style-actions,
+.plot-settings-panel .style-switches {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.plot-settings-panel .control-button-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.plot-settings-panel .secondary-button {
+  width: 100%;
+}
+
+.plot-settings-panel .trace-color-panel {
+  grid-template-columns: 1fr;
+}
+
 .plot-control-group {
   display: grid;
   gap: 10px;
@@ -776,11 +843,19 @@ label:has(input:disabled) {
   }
 
   .ion-grid,
+  .plot-workbench,
   .plot-controls,
   .axis-range-controls,
   .color-settings-grid,
   .style-grid {
     grid-template-columns: 1fr;
+  }
+
+  .plot-settings-panel,
+  .plot-preview-pane {
+    max-height: none;
+    overflow: visible;
+    position: static;
   }
 }
 

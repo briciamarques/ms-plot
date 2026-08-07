@@ -647,26 +647,27 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
         </div>
       </div>
 
-      <div className="plot-tabs" role="tablist" aria-label="Plot settings">
-        <button
-          type="button"
-          className={activeTab === "data" ? "tab-button active" : "tab-button"}
-          onClick={() => setActiveTab("data")}
-        >
-          Data
-        </button>
-        <button
-          type="button"
-          className={activeTab === "style" ? "tab-button active" : "tab-button"}
-          onClick={() => setActiveTab("style")}
-        >
-          Style
-        </button>
-      </div>
+      <div className="plot-workbench">
+        <aside className="plot-settings-panel" aria-label="Plot settings">
+          <div className="plot-tabs" role="tablist" aria-label="Plot settings">
+            <button
+              type="button"
+              className={activeTab === "data" ? "tab-button active" : "tab-button"}
+              onClick={() => setActiveTab("data")}
+            >
+              Data
+            </button>
+            <button
+              type="button"
+              className={activeTab === "style" ? "tab-button active" : "tab-button"}
+              onClick={() => setActiveTab("style")}
+            >
+              Style
+            </button>
+          </div>
 
-      {activeTab === "data" ? (
-        <>
-          <div className="plot-menu">
+          {activeTab === "data" ? (
+            <div className="plot-menu">
             <div className="plot-control-group">
               <h3>Text and axes</h3>
               <div className="plot-controls">
@@ -911,10 +912,9 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                 </div>
               ) : null}
             </div>
-          </div>
-        </>
-      ) : (
-        <div className="style-panel">
+            </div>
+          ) : (
+            <div className="style-panel">
           <div className="plot-control-group">
             <h3>Presets</h3>
             <div className="style-actions">
@@ -1174,42 +1174,50 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
               )}
             </div>
           </div>
-        </div>
-      )}
+            </div>
+          )}
+        </aside>
 
-      <div className="plot-preview-area" ref={previewAreaRef}>
-        <div
-          className={
-            previewExportRatio ? "plot-shell plot-shell-scaled" : "plot-shell"
-          }
-          style={
-            previewExportRatio
-              ? {
-                  width: previewFrameWidth,
-                  height: previewFrameHeight,
-                  minHeight: previewFrameHeight,
+        <div className="plot-preview-pane">
+          <div className="plot-preview-area" ref={previewAreaRef}>
+            <div
+              className={
+                previewExportRatio
+                  ? "plot-shell plot-shell-scaled"
+                  : "plot-shell"
+              }
+              style={
+                previewExportRatio
+                  ? {
+                      width: previewFrameWidth,
+                      height: previewFrameHeight,
+                      minHeight: previewFrameHeight,
+                    }
+                  : { minHeight: plotHeight }
+              }
+            >
+              {plotData.length === 0 ? (
+                <div className="plot-empty">No processed data</div>
+              ) : null}
+              <div
+                ref={plotRef}
+                className={
+                  previewExportRatio
+                    ? "plot-canvas plot-canvas-scaled"
+                    : "plot-canvas"
                 }
-              : { minHeight: plotHeight }
-          }
-        >
-          {plotData.length === 0 ? (
-            <div className="plot-empty">No processed data</div>
-          ) : null}
-          <div
-            ref={plotRef}
-            className={
-              previewExportRatio ? "plot-canvas plot-canvas-scaled" : "plot-canvas"
-            }
-            style={
-              previewExportRatio
-                ? {
-                    width: safeExportWidth,
-                    height: safeExportHeight,
-                    transform: `scale(${previewScale})`,
-                  }
-                : { minHeight: plotHeight }
-            }
-          />
+                style={
+                  previewExportRatio
+                    ? {
+                        width: safeExportWidth,
+                        height: safeExportHeight,
+                        transform: `scale(${previewScale})`,
+                      }
+                    : { minHeight: plotHeight }
+                }
+              />
+            </div>
+          </div>
         </div>
       </div>
     </section>
