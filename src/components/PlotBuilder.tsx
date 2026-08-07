@@ -222,7 +222,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   const [markerSize, setMarkerSize] = useState(5);
   const [lineShape, setLineShape] = useState<LineShape>("linear");
   const [previewExportRatio, setPreviewExportRatio] = useState(true);
-  const [plotHeight, setPlotHeight] = useState(460);
+  const [plotHeight, setPlotHeight] = useState(640);
   const [exportWidth, setExportWidth] = useState(1000);
   const [exportHeight, setExportHeight] = useState(760);
   const [axisColor, setAxisColor] = useState("#111111");
@@ -520,7 +520,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     setMarkerSize(5);
     setLineShape("linear");
     setPreviewExportRatio(true);
-    setPlotHeight(460);
+    setPlotHeight(640);
     setExportWidth(1000);
     setExportHeight(760);
     setAxisColor("#111111");
@@ -542,7 +542,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     setMarkerSize(8);
     setLineShape("linear");
     setPreviewExportRatio(true);
-    setPlotHeight(460);
+    setPlotHeight(640);
     setExportWidth(1400);
     setExportHeight(900);
     setAxisColor("#1e293b");
