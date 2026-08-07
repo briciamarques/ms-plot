@@ -13,6 +13,7 @@ import {
 
 type PlotBuilderProps = {
   rows: ProcessedRow[];
+  isActive?: boolean;
 };
 
 type PlotTab = "data" | "style";
@@ -186,8 +187,9 @@ function ColorControl({
   );
 }
 
-export function PlotBuilder({ rows }: PlotBuilderProps) {
+export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   const plotRef = useRef<HTMLDivElement | null>(null);
+  const previewAreaRef = useRef<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState<PlotTab>("data");
   const [xAxis, setXAxis] = useState<XAxisKey>("acqTime");
   const [yMode, setYMode] = useState<YMode>("absolute");
@@ -219,6 +221,7 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
   const [lineWidth, setLineWidth] = useState(2.8);
   const [markerSize, setMarkerSize] = useState(5);
   const [lineShape, setLineShape] = useState<LineShape>("linear");
+  const [previewExportRatio, setPreviewExportRatio] = useState(true);
   const [plotHeight, setPlotHeight] = useState(460);
   const [exportWidth, setExportWidth] = useState(1000);
   const [exportHeight, setExportHeight] = useState(760);
@@ -227,6 +230,7 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
   const [plotBackground, setPlotBackground] = useState("#ffffff");
   const [paperBackground, setPaperBackground] = useState("#ffffff");
   const [traceColors, setTraceColors] = useState<Record<string, string>>({});
+  const [previewAreaWidth, setPreviewAreaWidth] = useState(0);
 
   const shouldShowLegend =
     showLegend && (forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
@@ -270,6 +274,45 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
     ],
   );
 
+  const safeExportWidth =
+    Number.isFinite(exportWidth) && exportWidth > 0 ? exportWidth : 1;
+  const safeExportHeight =
+    Number.isFinite(exportHeight) && exportHeight > 0 ? exportHeight : 1;
+
+  const previewScale = useMemo(() => {
+    if (!previewExportRatio) {
+      return 1;
+    }
+
+    const maxPreviewWidth =
+      previewAreaWidth > 0 ? previewAreaWidth : safeExportWidth;
+    const maxPreviewHeight = Math.max(220, plotHeight);
+    const scale = Math.min(
+      1,
+      maxPreviewWidth / safeExportWidth,
+      maxPreviewHeight / safeExportHeight,
+    );
+
+    return Number.isFinite(scale) && scale > 0 ? scale : 1;
+  }, [
+    plotHeight,
+    previewAreaWidth,
+    previewExportRatio,
+    safeExportHeight,
+    safeExportWidth,
+  ]);
+
+  const previewFrameWidth = Math.max(
+    1,
+    Math.round(safeExportWidth * previewScale),
+  );
+  const previewFrameHeight = Math.max(
+    1,
+    Math.round(safeExportHeight * previewScale),
+  );
+  const plotRenderWidth = previewExportRatio ? safeExportWidth : undefined;
+  const plotRenderHeight = previewExportRatio ? safeExportHeight : plotHeight;
+
   const xDataBounds = useMemo(() => {
     const values = rows
       .map((row) => numericPrefix(row.metadata[xAxis] ?? ""))
@@ -297,6 +340,34 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
   }, [yMode]);
 
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    const previewAreaElement = previewAreaRef.current;
+    if (!previewAreaElement) {
+      return;
+    }
+
+    const updatePreviewAreaWidth = () => {
+      setPreviewAreaWidth(previewAreaElement.clientWidth);
+    };
+
+    updatePreviewAreaWidth();
+
+    const resizeObserver = new ResizeObserver(updatePreviewAreaWidth);
+    resizeObserver.observe(previewAreaElement);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [isActive]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
     const plotElement = plotRef.current;
     if (!plotElement) {
       return;
@@ -374,7 +445,9 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
         t: 72,
         b: shouldShowLegend && legendPosition === "bottom" ? 112 : 88,
       },
-      height: plotHeight,
+      autosize: !previewExportRatio,
+      ...(plotRenderWidth ? { width: plotRenderWidth } : {}),
+      height: plotRenderHeight,
       paper_bgcolor: paperBackground,
       plot_bgcolor: plotBackground,
       font: {
@@ -386,7 +459,7 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
     };
 
     Plotly.react(plotElement, plotData, layout, {
-      responsive: true,
+      responsive: !previewExportRatio,
       displaylogo: false,
       modeBarButtonsToRemove: ["lasso2d", "select2d"],
       scrollZoom: true,
@@ -401,6 +474,7 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
     axisTitleSize,
     fontFamily,
     gridColor,
+    isActive,
     legendInsideX,
     legendInsideY,
     legendPosition,
@@ -409,6 +483,9 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
     plotData,
     plotBackground,
     plotHeight,
+    plotRenderHeight,
+    plotRenderWidth,
+    previewExportRatio,
     shouldShowLegend,
     showAxisBox,
     showGrid,
@@ -442,6 +519,7 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
     setLineWidth(2.8);
     setMarkerSize(5);
     setLineShape("linear");
+    setPreviewExportRatio(true);
     setPlotHeight(460);
     setExportWidth(1000);
     setExportHeight(760);
@@ -463,6 +541,7 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
     setLineWidth(2.5);
     setMarkerSize(8);
     setLineShape("linear");
+    setPreviewExportRatio(true);
     setPlotHeight(460);
     setExportWidth(1400);
     setExportHeight(900);
@@ -521,8 +600,8 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
     void Plotly.downloadImage(plotRef.current, {
       format: "png",
       filename: "pd-ms-plot",
-      width: exportWidth,
-      height: exportHeight,
+      width: safeExportWidth,
+      height: safeExportHeight,
       scale: 2,
     });
   };
@@ -975,7 +1054,7 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
               </label>
 
               <label>
-                <span>Plot height</span>
+                <span>Preview max height</span>
                 <input
                   type="number"
                   min="320"
@@ -1012,6 +1091,17 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
             </div>
 
             <div className="style-switches">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={previewExportRatio}
+                  onChange={(event) =>
+                    setPreviewExportRatio(event.target.checked)
+                  }
+                />
+                <span>Match PNG preview</span>
+              </label>
+
               <label className="checkbox-label">
                 <input
                   type="checkbox"
@@ -1087,11 +1177,40 @@ export function PlotBuilder({ rows }: PlotBuilderProps) {
         </div>
       )}
 
-      <div className="plot-shell" style={{ minHeight: plotHeight }}>
-        {plotData.length === 0 ? (
-          <div className="plot-empty">No processed data</div>
-        ) : null}
-        <div ref={plotRef} className="plot-canvas" style={{ minHeight: plotHeight }} />
+      <div className="plot-preview-area" ref={previewAreaRef}>
+        <div
+          className={
+            previewExportRatio ? "plot-shell plot-shell-scaled" : "plot-shell"
+          }
+          style={
+            previewExportRatio
+              ? {
+                  width: previewFrameWidth,
+                  height: previewFrameHeight,
+                  minHeight: previewFrameHeight,
+                }
+              : { minHeight: plotHeight }
+          }
+        >
+          {plotData.length === 0 ? (
+            <div className="plot-empty">No processed data</div>
+          ) : null}
+          <div
+            ref={plotRef}
+            className={
+              previewExportRatio ? "plot-canvas plot-canvas-scaled" : "plot-canvas"
+            }
+            style={
+              previewExportRatio
+                ? {
+                    width: safeExportWidth,
+                    height: safeExportHeight,
+                    transform: `scale(${previewScale})`,
+                  }
+                : { minHeight: plotHeight }
+            }
+          />
+        </div>
       </div>
     </section>
   );

@@ -27,6 +27,15 @@ import {
 } from "./utils/filenameMetadata";
 import { suggestIonTargets } from "./utils/ionSuggestions";
 
+type WorkspaceTab = "setup" | "metadata" | "plot" | "data";
+
+const workspaceTabs: Array<{ key: WorkspaceTab; label: string }> = [
+  { key: "setup", label: "Files & ions" },
+  { key: "metadata", label: "Metadata" },
+  { key: "plot", label: "Plot" },
+  { key: "data", label: "Data" },
+];
+
 const initialIons: IonTarget[] = [
   { id: createId("ion"), targetMz: "751", label: "parent ion" },
   { id: createId("ion"), targetMz: "659", label: "fragment 1" },
@@ -55,6 +64,8 @@ function App() {
   const [plotSelectedOnly, setPlotSelectedOnly] = useState(false);
   const [projectName, setProjectName] = useState("pd-ms-project");
   const [projectStatus, setProjectStatus] = useState("");
+  const [activeWorkspaceTab, setActiveWorkspaceTab] =
+    useState<WorkspaceTab>("setup");
 
   const numericIons = useMemo<NumericIonTarget[]>(
     () =>
@@ -274,40 +285,85 @@ function App() {
         </div>
       </header>
 
-      <main>
-        <ProjectPanel
-          projectName={projectName}
-          status={projectStatus}
-          onProjectNameChange={setProjectName}
-          onSaveProject={saveProject}
-          onLoadProject={loadProject}
-        />
-        <FileUpload
-          onFilesSelected={handleFilesSelected}
-          isLoading={isLoadingFiles}
-        />
-        <MetadataTable
-          files={files}
-          selectedIds={selectedIds}
-          plotSelectedOnly={plotSelectedOnly}
-          onToggleFile={toggleFile}
-          onToggleAll={toggleAll}
-          onPlotSelectedOnlyChange={setPlotSelectedOnly}
-          onInferFilenameMetadata={inferFilenameMetadata}
-          onUpdateMetadata={updateMetadata}
-          onApplyBulkMetadata={applyBulkMetadata}
-          onRemoveSelected={removeSelected}
-        />
-        <IonSelectionPanel
-          ions={ions}
-          tolerance={tolerance}
-          canSuggestIons={files.some((file) => file.peaks.length > 0)}
-          onIonsChange={setIons}
-          onToleranceChange={setTolerance}
-          onSuggestIons={suggestIonsFromSpectra}
-        />
-        <PlotBuilder rows={plottedRows} />
-        <ProcessedDataTable rows={processedRows} />
+      <nav className="workspace-tabs" role="tablist" aria-label="Workspace">
+        {workspaceTabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={activeWorkspaceTab === tab.key}
+            className={
+              activeWorkspaceTab === tab.key
+                ? "workspace-tab-button active"
+                : "workspace-tab-button"
+            }
+            onClick={() => setActiveWorkspaceTab(tab.key)}
+          >
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      <main className="app-main">
+        <div
+          className="workspace-tab-panel"
+          hidden={activeWorkspaceTab !== "setup"}
+        >
+          <ProjectPanel
+            projectName={projectName}
+            status={projectStatus}
+            onProjectNameChange={setProjectName}
+            onSaveProject={saveProject}
+            onLoadProject={loadProject}
+          />
+          <FileUpload
+            onFilesSelected={handleFilesSelected}
+            isLoading={isLoadingFiles}
+          />
+          <IonSelectionPanel
+            ions={ions}
+            tolerance={tolerance}
+            canSuggestIons={files.some((file) => file.peaks.length > 0)}
+            onIonsChange={setIons}
+            onToleranceChange={setTolerance}
+            onSuggestIons={suggestIonsFromSpectra}
+          />
+        </div>
+
+        <div
+          className="workspace-tab-panel"
+          hidden={activeWorkspaceTab !== "metadata"}
+        >
+          <MetadataTable
+            files={files}
+            selectedIds={selectedIds}
+            plotSelectedOnly={plotSelectedOnly}
+            onToggleFile={toggleFile}
+            onToggleAll={toggleAll}
+            onPlotSelectedOnlyChange={setPlotSelectedOnly}
+            onInferFilenameMetadata={inferFilenameMetadata}
+            onUpdateMetadata={updateMetadata}
+            onApplyBulkMetadata={applyBulkMetadata}
+            onRemoveSelected={removeSelected}
+          />
+        </div>
+
+        <div
+          className="workspace-tab-panel"
+          hidden={activeWorkspaceTab !== "plot"}
+        >
+          <PlotBuilder
+            rows={plottedRows}
+            isActive={activeWorkspaceTab === "plot"}
+          />
+        </div>
+
+        <div
+          className="workspace-tab-panel"
+          hidden={activeWorkspaceTab !== "data"}
+        >
+          <ProcessedDataTable rows={processedRows} />
+        </div>
       </main>
     </div>
   );

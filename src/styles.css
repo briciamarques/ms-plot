@@ -101,11 +101,51 @@ button {
   white-space: nowrap;
 }
 
-main {
+.workspace-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 12px clamp(14px, 3vw, 40px) 0;
+  overflow-x: auto;
+  background: #eef2f6;
+}
+
+.workspace-tab-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-bottom-color: transparent;
+  border-radius: 8px 8px 0 0;
+  background: #f8fafc;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.workspace-tab-button.active {
+  background: #ffffff;
+  color: var(--teal-dark);
+  box-shadow: 0 -1px 10px rgba(30, 41, 59, 0.06);
+}
+
+.app-main {
   display: grid;
   gap: 18px;
   padding: 20px clamp(14px, 3vw, 40px) 40px;
   min-width: 0;
+}
+
+.workspace-tab-panel {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.workspace-tab-panel[hidden] {
+  display: none;
 }
 
 .workspace-section {
@@ -675,17 +715,35 @@ label:has(input:disabled) {
   font-weight: 750;
 }
 
+.plot-preview-area {
+  display: grid;
+  justify-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
 .plot-shell {
   position: relative;
   min-height: 520px;
+  margin-inline: auto;
+  max-width: 100%;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
 }
 
+.plot-shell-scaled {
+  min-height: 0;
+}
+
 .plot-canvas {
   width: 100%;
+}
+
+.plot-canvas-scaled {
+  max-width: none;
+  transform-origin: top left;
 }
 
 .plot-empty {
@@ -727,7 +785,8 @@ label:has(input:disabled) {
 }
 
 @media (max-width: 620px) {
-  main {
+  .app-main,
+  .workspace-tabs {
     padding-inline: 10px;
   }
 
