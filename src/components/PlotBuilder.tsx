@@ -25,6 +25,56 @@ type PlotFont =
   | "Inter, ui-sans-serif, system-ui, sans-serif";
 type LineShape = "linear" | "spline";
 type TickFormat = "auto" | "plain" | "scientific";
+type JournalPresetKey = "jasms-single";
+type FigureContent = "color" | "grayscale" | "lineArt";
+type RasterDpi = 300 | 600 | 1200;
+
+const MM_PER_INCH = 25.4;
+
+const journalPresets: Array<{
+  key: JournalPresetKey;
+  label: string;
+  widthMm: number;
+  maxHeightMm: number;
+  minFontPt: number;
+  minLinePt: number;
+}> = [
+  {
+    key: "jasms-single",
+    label: "JASMS - Single column",
+    widthMm: 84.6,
+    maxHeightMm: 232.8,
+    minFontPt: 4.5,
+    minLinePt: 0.5,
+  },
+];
+
+const figureContentOptions: Array<{
+  key: FigureContent;
+  label: string;
+  recommendedDpi: RasterDpi;
+}> = [
+  { key: "color", label: "Color", recommendedDpi: 300 },
+  { key: "grayscale", label: "Grayscale", recommendedDpi: 600 },
+  { key: "lineArt", label: "Line art", recommendedDpi: 1200 },
+];
+
+const rasterDpiOptions: RasterDpi[] = [300, 600, 1200];
+
+const pointsToPixels = (points: number, dpi: number): number =>
+  Math.max(1, Math.round((points * dpi) / 72));
+
+const pixelsToPoints = (pixels: number, dpi: number): number =>
+  (pixels / dpi) * 72;
+
+const pixelsFromMm = (millimeters: number, dpi: number): number =>
+  Math.max(1, Math.round((millimeters / MM_PER_INCH) * dpi));
+
+const mmFromPixels = (pixels: number, dpi: number): number =>
+  (pixels / dpi) * MM_PER_INCH;
+
+const formatDecimal = (value: number, digits = 1): string =>
+  Number.isFinite(value) ? value.toFixed(digits) : "0.0";
 
 const axisLabel = (axis: XAxisKey): string =>
   xAxisOptions.find((option) => option.key === axis)?.label ?? "x";
@@ -225,6 +275,12 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   const [plotHeight, setPlotHeight] = useState(640);
   const [exportWidth, setExportWidth] = useState(1000);
   const [exportHeight, setExportHeight] = useState(760);
+  const [journalPreset, setJournalPreset] =
+    useState<JournalPresetKey>("jasms-single");
+  const [figureContent, setFigureContent] = useState<FigureContent>("color");
+  const [rasterDpi, setRasterDpi] = useState<RasterDpi>(300);
+  const [finalWidthMm, setFinalWidthMm] = useState(84.6);
+  const [journalStatus, setJournalStatus] = useState("");
   const [axisColor, setAxisColor] = useState("#111111");
   const [gridColor, setGridColor] = useState("#d7d7d7");
   const [plotBackground, setPlotBackground] = useState("#ffffff");
@@ -278,6 +334,24 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     Number.isFinite(exportWidth) && exportWidth > 0 ? exportWidth : 1;
   const safeExportHeight =
     Number.isFinite(exportHeight) && exportHeight > 0 ? exportHeight : 1;
+  const selectedJournalPreset =
+    journalPresets.find((preset) => preset.key === journalPreset) ??
+    journalPresets[0];
+  const selectedFigureContent =
+    figureContentOptions.find((option) => option.key === figureContent) ??
+    figureContentOptions[0];
+  const outputWidthMm = mmFromPixels(safeExportWidth, rasterDpi);
+  const outputHeightMm = mmFromPixels(safeExportHeight, rasterDpi);
+  const smallestFontPt = Math.min(
+    pixelsToPoints(titleSize, rasterDpi),
+    pixelsToPoints(axisTitleSize, rasterDpi),
+    pixelsToPoints(tickSize, rasterDpi),
+    pixelsToPoints(legendSize, rasterDpi),
+  );
+  const smallestLinePt = Math.min(
+    pixelsToPoints(axisLineWidth, rasterDpi),
+    pixelsToPoints(lineWidth, rasterDpi),
+  );
 
   const previewScale = useMemo(() => {
     if (!previewExportRatio) {
@@ -567,6 +641,109 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     setTraceColors({});
   };
 
+  const setPublicationOutput = (widthMm: number, dpi: RasterDpi) => {
+    const nextWidthMm =
+      Number.isFinite(widthMm) && widthMm > 0
+        ? widthMm
+        : selectedJournalPreset.widthMm;
+    const aspectRatio = safeExportHeight / safeExportWidth || 1;
+    const nextWidthPx = pixelsFromMm(nextWidthMm, dpi);
+
+    setFinalWidthMm(nextWidthMm);
+    setRasterDpi(dpi);
+    setExportWidth(nextWidthPx);
+    setExportHeight(Math.max(1, Math.round(nextWidthPx * aspectRatio)));
+  };
+
+  const updateFigureContent = (nextContent: FigureContent) => {
+    const recommendedDpi =
+      figureContentOptions.find((option) => option.key === nextContent)
+        ?.recommendedDpi ?? rasterDpi;
+
+    setFigureContent(nextContent);
+    setPublicationOutput(finalWidthMm, recommendedDpi);
+  };
+
+  const updateRasterDpi = (nextDpi: RasterDpi) => {
+    setPublicationOutput(finalWidthMm, nextDpi);
+  };
+
+  const updateFinalWidthMm = (nextWidthMm: number) => {
+    setPublicationOutput(nextWidthMm, rasterDpi);
+  };
+
+  const updateExportWidth = (nextWidth: number) => {
+    setExportWidth(nextWidth);
+
+    if (Number.isFinite(nextWidth) && nextWidth > 0) {
+      setFinalWidthMm(mmFromPixels(nextWidth, rasterDpi));
+    }
+  };
+
+  const applyJournalPreset = () => {
+    const dpi = selectedFigureContent.recommendedDpi;
+
+    setFontFamily("Arial");
+    setTitleSize(pointsToPixels(8, dpi));
+    setAxisTitleSize(pointsToPixels(8, dpi));
+    setTickSize(pointsToPixels(7, dpi));
+    setLegendSize(pointsToPixels(7, dpi));
+    setShowGrid(false);
+    setShowAxisBox(true);
+    setAxisLineWidth(pointsToPixels(0.6, dpi));
+    setLineWidth(pointsToPixels(0.7, dpi));
+    setMarkerSize(pointsToPixels(1.1, dpi));
+    setLineShape("linear");
+    setPreviewExportRatio(true);
+    setPlotHeight(720);
+    setAxisColor("#111111");
+    setGridColor("#d7d7d7");
+    setPlotBackground("#ffffff");
+    setPaperBackground("#ffffff");
+    setPublicationOutput(selectedJournalPreset.widthMm, dpi);
+    setJournalStatus("Journal preset applied");
+  };
+
+  const checkJournalCompliance = () => {
+    const issues: string[] = [];
+
+    if (outputWidthMm > selectedJournalPreset.widthMm + 0.1) {
+      issues.push(
+        `width is ${formatDecimal(outputWidthMm)} mm, above ${selectedJournalPreset.widthMm} mm`,
+      );
+    }
+
+    if (outputHeightMm > selectedJournalPreset.maxHeightMm + 0.1) {
+      issues.push(
+        `height is ${formatDecimal(outputHeightMm)} mm, above ${selectedJournalPreset.maxHeightMm} mm`,
+      );
+    }
+
+    if (smallestFontPt < selectedJournalPreset.minFontPt) {
+      issues.push(
+        `smallest font is ${formatDecimal(smallestFontPt)} pt, below ${selectedJournalPreset.minFontPt} pt`,
+      );
+    }
+
+    if (smallestLinePt < selectedJournalPreset.minLinePt) {
+      issues.push(
+        `smallest line is ${formatDecimal(smallestLinePt)} pt, below ${selectedJournalPreset.minLinePt} pt`,
+      );
+    }
+
+    if (rasterDpi < selectedFigureContent.recommendedDpi) {
+      issues.push(
+        `${selectedFigureContent.label.toLowerCase()} figures should use at least ${selectedFigureContent.recommendedDpi} dpi`,
+      );
+    }
+
+    setJournalStatus(
+      issues.length > 0
+        ? issues.join(" - ")
+        : "Looks within the selected JASMS checks",
+    );
+  };
+
   const setRangeToDataLimits = () => {
     if (xDataBounds) {
       setXMin(String(xDataBounds[0]));
@@ -602,7 +779,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
       filename: "pd-ms-plot",
       width: safeExportWidth,
       height: safeExportHeight,
-      scale: 2,
+      scale: 1,
     });
   };
 
@@ -916,6 +1093,138 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
           ) : (
             <div className="style-panel">
           <div className="plot-control-group">
+            <h3>Journal preset</h3>
+            <div className="style-grid publication-grid">
+              <label>
+                <span>Journal preset</span>
+                <select
+                  value={journalPreset}
+                  onChange={(event) =>
+                    setJournalPreset(event.target.value as JournalPresetKey)
+                  }
+                >
+                  {journalPresets.map((preset) => (
+                    <option key={preset.key} value={preset.key}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span>Figure content</span>
+                <select
+                  value={figureContent}
+                  onChange={(event) =>
+                    updateFigureContent(event.target.value as FigureContent)
+                  }
+                >
+                  {figureContentOptions.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <p className="publication-guidelines">
+              {selectedJournalPreset.widthMm} mm wide -{" "}
+              {selectedJournalPreset.maxHeightMm} mm max height - minimum font{" "}
+              {selectedJournalPreset.minFontPt} pt - minimum line{" "}
+              {selectedJournalPreset.minLinePt} pt -{" "}
+              {selectedFigureContent.recommendedDpi} dpi recommended
+            </p>
+
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={applyJournalPreset}
+            >
+              Apply journal preset
+            </button>
+          </div>
+
+          <div className="plot-control-group">
+            <h3>Publication size and export</h3>
+            <div className="style-grid publication-grid">
+              <label>
+                <span>Raster resolution</span>
+                <select
+                  value={rasterDpi}
+                  onChange={(event) =>
+                    updateRasterDpi(Number(event.target.value) as RasterDpi)
+                  }
+                >
+                  {rasterDpiOptions.map((dpi) => (
+                    <option key={dpi} value={dpi}>
+                      {dpi} dpi
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span>Final width (mm)</span>
+                <input
+                  type="number"
+                  min="10"
+                  max="250"
+                  step="0.1"
+                  value={finalWidthMm}
+                  onChange={(event) =>
+                    updateFinalWidthMm(Number(event.target.value))
+                  }
+                />
+              </label>
+
+              <label>
+                <span>PNG width</span>
+                <input
+                  type="number"
+                  min="100"
+                  max="12000"
+                  step="50"
+                  value={exportWidth}
+                  onChange={(event) => updateExportWidth(Number(event.target.value))}
+                />
+              </label>
+
+              <label>
+                <span>PNG height</span>
+                <input
+                  type="number"
+                  min="100"
+                  max="12000"
+                  step="50"
+                  value={exportHeight}
+                  onChange={(event) => setExportHeight(Number(event.target.value))}
+                />
+              </label>
+            </div>
+
+            <div className="publication-summary" aria-live="polite">
+              Output: PNG {safeExportWidth} x {safeExportHeight} px at{" "}
+              {rasterDpi} dpi. Final size: {formatDecimal(outputWidthMm)} x{" "}
+              {formatDecimal(outputHeightMm)} mm. Smallest font:{" "}
+              {formatDecimal(smallestFontPt)} pt.
+            </div>
+
+            <div className="publication-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={checkJournalCompliance}
+              >
+                Check JASMS compliance
+              </button>
+              {journalStatus ? (
+                <span className="inline-status">{journalStatus}</span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="plot-control-group">
             <h3>Presets</h3>
             <div className="style-actions">
               <button
@@ -967,7 +1276,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                 <input
                   type="number"
                   min="8"
-                  max="42"
+                  max="240"
                   value={titleSize}
                   onChange={(event) => setTitleSize(Number(event.target.value))}
                 />
@@ -978,7 +1287,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                 <input
                   type="number"
                   min="8"
-                  max="36"
+                  max="240"
                   value={axisTitleSize}
                   onChange={(event) => setAxisTitleSize(Number(event.target.value))}
                 />
@@ -989,7 +1298,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                 <input
                   type="number"
                   min="8"
-                  max="30"
+                  max="240"
                   value={tickSize}
                   onChange={(event) => setTickSize(Number(event.target.value))}
                 />
@@ -1000,7 +1309,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                 <input
                   type="number"
                   min="8"
-                  max="30"
+                  max="240"
                   value={legendSize}
                   onChange={(event) => setLegendSize(Number(event.target.value))}
                 />
@@ -1011,7 +1320,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                 <input
                   type="number"
                   min="0.5"
-                  max="10"
+                  max="60"
                   step="0.1"
                   value={lineWidth}
                   onChange={(event) => setLineWidth(Number(event.target.value))}
@@ -1023,7 +1332,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                 <input
                   type="number"
                   min="0"
-                  max="20"
+                  max="120"
                   step="0.5"
                   value={markerSize}
                   onChange={(event) => setMarkerSize(Number(event.target.value))}
@@ -1046,7 +1355,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                 <input
                   type="number"
                   min="1"
-                  max="6"
+                  max="60"
                   step="0.5"
                   value={axisLineWidth}
                   onChange={(event) => setAxisLineWidth(Number(event.target.value))}
@@ -1058,34 +1367,10 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                 <input
                   type="number"
                   min="320"
-                  max="1200"
+                  max="1800"
                   step="20"
                   value={plotHeight}
                   onChange={(event) => setPlotHeight(Number(event.target.value))}
-                />
-              </label>
-
-              <label>
-                <span>PNG width</span>
-                <input
-                  type="number"
-                  min="500"
-                  max="3000"
-                  step="50"
-                  value={exportWidth}
-                  onChange={(event) => setExportWidth(Number(event.target.value))}
-                />
-              </label>
-
-              <label>
-                <span>PNG height</span>
-                <input
-                  type="number"
-                  min="400"
-                  max="3000"
-                  step="50"
-                  value={exportHeight}
-                  onChange={(event) => setExportHeight(Number(event.target.value))}
                 />
               </label>
             </div>

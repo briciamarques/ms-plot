@@ -362,6 +362,29 @@ label:has(input:disabled) {
   font-weight: 800;
 }
 
+.publication-guidelines,
+.publication-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.publication-summary {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.publication-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .bulk-toolbar select {
   max-width: 190px;
 }
@@ -653,7 +676,8 @@ label:has(input:disabled) {
 .plot-settings-panel .legend-controls,
 .plot-settings-panel .inside-legend-controls,
 .plot-settings-panel .style-actions,
-.plot-settings-panel .style-switches {
+.plot-settings-panel .style-switches,
+.plot-settings-panel .publication-actions {
   align-items: stretch;
   flex-direction: column;
 }
