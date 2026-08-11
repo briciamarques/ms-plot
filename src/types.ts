@@ -83,7 +83,7 @@ export const metadataFields: Array<{
   { key: "compound", label: "Compound", placeholder: "riboflavin" },
   { key: "parentIon", label: "Parent ion", placeholder: "457" },
   { key: "condition", label: "Condition", placeholder: "LED on" },
-  { key: "acqTime", label: "ACQ time", placeholder: "100 ms" },
+  { key: "acqTime", label: "Act. Time (ms)", placeholder: "100 ms" },
   { key: "activationTime", label: "Activation time", placeholder: "20 ms" },
   { key: "ledPower", label: "LED power", placeholder: "max" },
   { key: "wavelength", label: "Wavelength", placeholder: "365 nm" },
@@ -92,7 +92,7 @@ export const metadataFields: Array<{
 ];
 
 export const xAxisOptions: Array<{ key: XAxisKey; label: string }> = [
-  { key: "acqTime", label: "ACQ time" },
+  { key: "acqTime", label: "Act. Time" },
   { key: "activationTime", label: "Activation time" },
   { key: "ledPower", label: "LED power" },
   { key: "wavelength", label: "Wavelength" },

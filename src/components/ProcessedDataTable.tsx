@@ -42,7 +42,7 @@ export function ProcessedDataTable({ rows }: ProcessedDataTableProps) {
               <th>Compound</th>
               <th>Parent ion</th>
               <th>Condition</th>
-              <th>ACQ time</th>
+              <th>Act. Time (ms)</th>
               <th>Activation time</th>
               <th>LED power</th>
               <th>Wavelength</th>
