@@ -25,6 +25,7 @@ type PlotFont =
   | "Inter, ui-sans-serif, system-ui, sans-serif";
 type LineShape = "linear" | "spline";
 type TickFormat = "auto" | "plain" | "scientific";
+type XValueScale = "raw" | "msToSeconds" | "custom";
 type JournalPresetKey = "jasms-single";
 type FigureContent = "color" | "grayscale" | "lineArt";
 type RasterDpi = 300 | 600 | 1200;
@@ -248,6 +249,8 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   const [xUnit, setXUnit] = useState("ms");
   const [yTitle, setYTitle] = useState("Absolute intensity");
   const [yUnit, setYUnit] = useState("");
+  const [xValueScale, setXValueScale] = useState<XValueScale>("raw");
+  const [xValueMultiplier, setXValueMultiplier] = useState(1);
   const [xTickFormat, setXTickFormat] = useState<TickFormat>("auto");
   const [yTickFormat, setYTickFormat] = useState<TickFormat>("auto");
   const [xMin, setXMin] = useState("");
@@ -317,7 +320,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
         lineWidth,
         markerSize,
         lineShape,
-      }),
+      }, xValueMultiplier),
     [
       lineShape,
       lineWidth,
@@ -326,6 +329,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
       shouldShowLegend,
       traceColors,
       xAxis,
+      xValueMultiplier,
       yMode,
     ],
   );
@@ -390,10 +394,11 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   const xDataBounds = useMemo(() => {
     const values = rows
       .map((row) => numericPrefix(row.metadata[xAxis] ?? ""))
+      .map((value) => (value === null ? null : value * xValueMultiplier))
       .filter((value): value is number => value !== null);
 
     return boundsFromValues(values);
-  }, [rows, xAxis]);
+  }, [rows, xAxis, xValueMultiplier]);
 
   const yDataBounds = useMemo(() => {
     const values = rows.map((row) =>
@@ -402,11 +407,6 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
 
     return boundsFromValues(values);
   }, [rows, yMode]);
-
-  useEffect(() => {
-    setXTitle(axisLabel(xAxis));
-    setXUnit(defaultXAxisUnit(xAxis));
-  }, [xAxis]);
 
   useEffect(() => {
     setYTitle(yMode === "absolute" ? "Absolute intensity" : "Relative intensity");
@@ -641,6 +641,41 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     setTraceColors({});
   };
 
+  const updateXAxis = (nextAxis: XAxisKey) => {
+    setXAxis(nextAxis);
+    setXTitle(axisLabel(nextAxis));
+    setXUnit(defaultXAxisUnit(nextAxis));
+    setXValueScale("raw");
+    setXValueMultiplier(1);
+    setXMin("");
+    setXMax("");
+  };
+
+  const updateXValueScale = (nextScale: XValueScale) => {
+    setXValueScale(nextScale);
+    setXMin("");
+    setXMax("");
+
+    if (nextScale === "raw") {
+      setXValueMultiplier(1);
+    }
+
+    if (nextScale === "msToSeconds") {
+      setXValueMultiplier(0.001);
+    }
+  };
+
+  const applyIrradiationTimeAxis = () => {
+    setXAxis("acqTime");
+    setXTitle("Irradiation Time");
+    setXUnit("s");
+    setXTickFormat("plain");
+    setXValueScale("msToSeconds");
+    setXValueMultiplier(0.001);
+    setXMin("");
+    setXMax("");
+  };
+
   const setPublicationOutput = (widthMm: number, dpi: RasterDpi) => {
     const nextWidthMm =
       Number.isFinite(widthMm) && widthMm > 0
@@ -790,7 +825,13 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
 
     downloadTextFile(
       "pd-ms-plot-data.csv",
-      plotRowsToCsv(rows, xAxis, yMode),
+      plotRowsToCsv(
+        rows,
+        xAxis,
+        yMode,
+        xValueMultiplier,
+        axisTitleWithUnit(xTitle, xUnit),
+      ),
       "text/csv;charset=utf-8",
     );
   };
@@ -852,7 +893,9 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                   <span>x axis</span>
                   <select
                     value={xAxis}
-                    onChange={(event) => setXAxis(event.target.value as XAxisKey)}
+                    onChange={(event) =>
+                      updateXAxis(event.target.value as XAxisKey)
+                    }
                   >
                     {xAxisOptions.map((option) => (
                       <option key={option.key} value={option.key}>
@@ -908,6 +951,45 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                     placeholder="ms"
                   />
                 </label>
+
+                <label>
+                  <span>x value scale</span>
+                  <select
+                    value={xValueScale}
+                    onChange={(event) =>
+                      updateXValueScale(event.target.value as XValueScale)
+                    }
+                  >
+                    <option value="raw">Raw values</option>
+                    <option value="msToSeconds">ms to s</option>
+                    <option value="custom">Custom multiplier</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>x multiplier</span>
+                  <input
+                    type="number"
+                    step="0.001"
+                    value={xValueMultiplier}
+                    onChange={(event) => {
+                      setXValueScale("custom");
+                      setXValueMultiplier(Number(event.target.value));
+                      setXMin("");
+                      setXMax("");
+                    }}
+                  />
+                </label>
+
+                <div className="control-button-row">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={applyIrradiationTimeAxis}
+                  >
+                    Irradiation Time (s)
+                  </button>
+                </div>
 
                 <label>
                   <span>y unit</span>

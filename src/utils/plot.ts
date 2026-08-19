@@ -56,10 +56,13 @@ const getSortableNumber = (value: string): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const getPlotXValue = (value: string): number | string => {
+const getPlotXValue = (
+  value: string,
+  numericMultiplier = 1,
+): number | string => {
   const sortableNumber = getSortableNumber(value);
   if (sortableNumber !== null) {
-    return sortableNumber;
+    return sortableNumber * numericMultiplier;
   }
 
   return value.trim() || "(blank)";
@@ -101,6 +104,7 @@ export const buildPlotData = (
   yMode: YMode,
   showLegend: boolean,
   style: TraceStyleOptions,
+  xValueMultiplier = 1,
 ): PlotTrace[] => {
   const rowsByIon = new Map<string, ProcessedRow[]>();
 
@@ -119,7 +123,9 @@ export const buildPlotData = (
       fallbackColors[index % fallbackColors.length];
 
     return {
-      x: sortedRows.map((row) => getPlotXValue(getAxisRawValue(row, axis))),
+      x: sortedRows.map((row) =>
+        getPlotXValue(getAxisRawValue(row, axis), xValueMultiplier),
+      ),
       y: sortedRows.map((row) =>
         yMode === "absolute" ? row.absoluteIntensity : row.relativeIntensity,
       ),

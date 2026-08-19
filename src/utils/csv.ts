@@ -59,10 +59,35 @@ const axisLabel = (axis: XAxisKey): string =>
 const yModeLabel = (mode: YMode): string =>
   yModeOptions.find((option) => option.key === mode)?.label ?? mode;
 
+const numericPrefix = (value: string): number | null => {
+  const match = value.trim().match(/^-?\d+(?:\.\d+)?/);
+  if (!match) {
+    return null;
+  }
+
+  const parsedValue = Number(match[0]);
+  return Number.isFinite(parsedValue) ? parsedValue : null;
+};
+
+const plotAxisValue = (
+  value: string,
+  numericMultiplier: number,
+): string | number => {
+  const numericValue = numericPrefix(value);
+
+  if (numericValue === null) {
+    return value;
+  }
+
+  return numericValue * numericMultiplier;
+};
+
 export const plotRowsToCsv = (
   rows: ProcessedRow[],
   xAxis: XAxisKey,
   yMode: YMode,
+  xValueMultiplier = 1,
+  xAxisDisplayLabel?: string,
 ): string => {
   const headers = [
     "plot x axis",
@@ -87,8 +112,8 @@ export const plotRowsToCsv = (
   ];
 
   const csvRows = rows.map((row) => [
-    axisLabel(xAxis),
-    row.metadata[xAxis],
+    xAxisDisplayLabel ?? axisLabel(xAxis),
+    plotAxisValue(row.metadata[xAxis], xValueMultiplier),
     yModeLabel(yMode),
     yMode === "absolute" ? row.absoluteIntensity : row.relativeIntensity,
     row.filename,
