@@ -569,6 +569,7 @@ label:has(input:disabled) {
 .axis-range-controls label,
 .legend-controls label:not(.checkbox-label),
 .inside-legend-controls label,
+.saved-style-name,
 .style-grid label {
   display: grid;
   gap: 5px;
@@ -712,6 +713,29 @@ label:has(input:disabled) {
   color: #334155;
   font-size: 0.88rem;
   font-weight: 900;
+}
+
+.control-subheading {
+  margin: 0;
+  color: var(--teal-dark);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.saved-style-section {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.saved-style-section .control-button-row {
+  grid-template-columns: minmax(0, 1fr) 38px;
+}
+
+.saved-style-section .icon-button {
+  width: 38px;
 }
 
 .style-actions,

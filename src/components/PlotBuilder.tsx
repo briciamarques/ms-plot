@@ -1,5 +1,5 @@
 import Plotly from "plotly.js-dist-min";
-import { Download, RotateCcw } from "lucide-react";
+import { Download, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LegendPosition, ProcessedRow, XAxisKey, YMode } from "../types";
 import { xAxisOptions, yModeOptions } from "../types";
@@ -30,7 +30,75 @@ type JournalPresetKey = "jasms-single";
 type FigureContent = "color" | "grayscale" | "lineArt";
 type RasterDpi = 300 | 600 | 1200;
 
+type PlotStyleSettings = {
+  fontFamily: PlotFont;
+  titleSize: number;
+  axisTitleSize: number;
+  tickSize: number;
+  legendSize: number;
+  showLegend: boolean;
+  legendPosition: LegendPosition;
+  legendInsideX: number;
+  legendInsideY: number;
+  forceSingleLegend: boolean;
+  showGrid: boolean;
+  showAxisBox: boolean;
+  axisLineWidth: number;
+  lineWidth: number;
+  markerSize: number;
+  lineShape: LineShape;
+  previewExportRatio: boolean;
+  plotHeight: number;
+  exportWidth: number;
+  exportHeight: number;
+  figureContent: FigureContent;
+  rasterDpi: RasterDpi;
+  finalWidthMm: number;
+  axisColor: string;
+  gridColor: string;
+  plotBackground: string;
+  paperBackground: string;
+  tracePalette: string[];
+};
+
+type SavedPlotStyle = {
+  id: string;
+  name: string;
+  settings: PlotStyleSettings;
+};
+
 const MM_PER_INCH = 25.4;
+const STYLE_PRESETS_STORAGE_KEY = "pd-ms-plot-style-presets-v1";
+
+const loadSavedPlotStyles = (): SavedPlotStyle[] => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(STYLE_PRESETS_STORAGE_KEY);
+    if (!storedValue) {
+      return [];
+    }
+
+    const parsedValue: unknown = JSON.parse(storedValue);
+    if (!Array.isArray(parsedValue)) {
+      return [];
+    }
+
+    return parsedValue.filter(
+      (preset): preset is SavedPlotStyle =>
+        typeof preset === "object" &&
+        preset !== null &&
+        typeof (preset as SavedPlotStyle).id === "string" &&
+        typeof (preset as SavedPlotStyle).name === "string" &&
+        typeof (preset as SavedPlotStyle).settings === "object" &&
+        (preset as SavedPlotStyle).settings !== null,
+    );
+  } catch {
+    return [];
+  }
+};
 
 const journalPresets: Array<{
   key: JournalPresetKey;
@@ -289,6 +357,11 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   const [plotBackground, setPlotBackground] = useState("#ffffff");
   const [paperBackground, setPaperBackground] = useState("#ffffff");
   const [traceColors, setTraceColors] = useState<Record<string, string>>({});
+  const [savedPlotStyles, setSavedPlotStyles] =
+    useState<SavedPlotStyle[]>(loadSavedPlotStyles);
+  const [stylePresetName, setStylePresetName] = useState("");
+  const [selectedStylePresetId, setSelectedStylePresetId] = useState("");
+  const [stylePresetStatus, setStylePresetStatus] = useState("");
   const [previewAreaWidth, setPreviewAreaWidth] = useState(0);
 
   const shouldShowLegend =
@@ -412,6 +485,17 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     setYTitle(yMode === "absolute" ? "Absolute intensity" : "Relative intensity");
     setYUnit(yMode === "relative" ? "%" : "");
   }, [yMode]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        STYLE_PRESETS_STORAGE_KEY,
+        JSON.stringify(savedPlotStyles),
+      );
+    } catch {
+      setStylePresetStatus("Could not save presets in this browser");
+    }
+  }, [savedPlotStyles]);
 
   useEffect(() => {
     if (!isActive) {
@@ -639,6 +723,141 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
 
   const resetTraceColors = () => {
     setTraceColors({});
+  };
+
+  const currentStyleSettings = (): PlotStyleSettings => ({
+    fontFamily,
+    titleSize,
+    axisTitleSize,
+    tickSize,
+    legendSize,
+    showLegend,
+    legendPosition,
+    legendInsideX,
+    legendInsideY,
+    forceSingleLegend,
+    showGrid,
+    showAxisBox,
+    axisLineWidth,
+    lineWidth,
+    markerSize,
+    lineShape,
+    previewExportRatio,
+    plotHeight,
+    exportWidth: safeExportWidth,
+    exportHeight: safeExportHeight,
+    figureContent,
+    rasterDpi,
+    finalWidthMm,
+    axisColor,
+    gridColor,
+    plotBackground,
+    paperBackground,
+    tracePalette: ionOptions.map(
+      (option) => traceColors[option.ionId] ?? option.fallbackColor,
+    ),
+  });
+
+  const saveCurrentStyle = () => {
+    const name = stylePresetName.trim();
+    if (!name) {
+      setStylePresetStatus("Enter a name for the style");
+      return;
+    }
+
+    const existingPreset = savedPlotStyles.find(
+      (preset) => preset.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+    );
+    const preset: SavedPlotStyle = {
+      id:
+        existingPreset?.id ??
+        `style-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      settings: currentStyleSettings(),
+    };
+
+    setSavedPlotStyles((currentPresets) =>
+      existingPreset
+        ? currentPresets.map((currentPreset) =>
+            currentPreset.id === existingPreset.id ? preset : currentPreset,
+          )
+        : [...currentPresets, preset],
+    );
+    setSelectedStylePresetId(preset.id);
+    setStylePresetStatus(
+      existingPreset ? "Style preset updated" : "Style preset saved",
+    );
+  };
+
+  const applySavedStyle = () => {
+    const preset = savedPlotStyles.find(
+      (savedPreset) => savedPreset.id === selectedStylePresetId,
+    );
+    if (!preset) {
+      setStylePresetStatus("Choose a saved style");
+      return;
+    }
+
+    const settings = preset.settings;
+    setFontFamily(settings.fontFamily);
+    setTitleSize(settings.titleSize);
+    setAxisTitleSize(settings.axisTitleSize);
+    setTickSize(settings.tickSize);
+    setLegendSize(settings.legendSize);
+    setShowLegend(settings.showLegend);
+    setLegendPosition(settings.legendPosition);
+    setLegendInsideX(settings.legendInsideX);
+    setLegendInsideY(settings.legendInsideY);
+    setForceSingleLegend(settings.forceSingleLegend);
+    setShowGrid(settings.showGrid);
+    setShowAxisBox(settings.showAxisBox);
+    setAxisLineWidth(settings.axisLineWidth);
+    setLineWidth(settings.lineWidth);
+    setMarkerSize(settings.markerSize);
+    setLineShape(settings.lineShape);
+    setPreviewExportRatio(settings.previewExportRatio);
+    setPlotHeight(settings.plotHeight);
+    setExportWidth(settings.exportWidth);
+    setExportHeight(settings.exportHeight);
+    setFigureContent(settings.figureContent);
+    setRasterDpi(settings.rasterDpi);
+    setFinalWidthMm(settings.finalWidthMm);
+    setAxisColor(settings.axisColor);
+    setGridColor(settings.gridColor);
+    setPlotBackground(settings.plotBackground);
+    setPaperBackground(settings.paperBackground);
+    setTraceColors(
+      settings.tracePalette.length > 0
+        ? Object.fromEntries(
+            ionOptions.map((option, index) => [
+              option.ionId,
+              settings.tracePalette[index % settings.tracePalette.length],
+            ]),
+          )
+        : {},
+    );
+    setStylePresetName(preset.name);
+    setStylePresetStatus("Style preset applied");
+  };
+
+  const deleteSavedStyle = () => {
+    const preset = savedPlotStyles.find(
+      (savedPreset) => savedPreset.id === selectedStylePresetId,
+    );
+    if (!preset) {
+      return;
+    }
+
+    if (!window.confirm(`Delete the style preset "${preset.name}"?`)) {
+      return;
+    }
+
+    setSavedPlotStyles((currentPresets) =>
+      currentPresets.filter((currentPreset) => currentPreset.id !== preset.id),
+    );
+    setSelectedStylePresetId("");
+    setStylePresetName("");
+    setStylePresetStatus("Style preset deleted");
   };
 
   const updateXAxis = (nextAxis: XAxisKey) => {
@@ -1094,41 +1313,8 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
             </div>
 
             <div className="plot-control-group">
-              <h3>Legend and zoom</h3>
-              <div className="legend-controls">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={showLegend}
-                    onChange={(event) => setShowLegend(event.target.checked)}
-                  />
-                  <span>Show legend</span>
-                </label>
-
-                <label>
-                  <span>Legend position</span>
-                  <select
-                    value={legendPosition}
-                    onChange={(event) =>
-                      setLegendPosition(event.target.value as LegendPosition)
-                    }
-                  >
-                    <option value="right">Right</option>
-                    <option value="top">Top</option>
-                    <option value="bottom">Bottom</option>
-                    <option value="inside">Inside</option>
-                  </select>
-                </label>
-
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={forceSingleLegend}
-                    onChange={(event) => setForceSingleLegend(event.target.checked)}
-                  />
-                  <span>Keep legend for one m/z</span>
-                </label>
-
+              <h3>Zoom</h3>
+              <div className="style-switches">
                 <label className="checkbox-label">
                   <input
                     type="checkbox"
@@ -1138,44 +1324,13 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                   <span>Lock y axis zoom</span>
                 </label>
               </div>
-
-              {legendPosition === "inside" ? (
-                <div className="inside-legend-controls">
-                  <label>
-                    <span>Legend x</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={legendInsideX}
-                      onChange={(event) =>
-                        setLegendInsideX(Number(event.target.value))
-                      }
-                    />
-                  </label>
-
-                  <label>
-                    <span>Legend y</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={legendInsideY}
-                      onChange={(event) =>
-                        setLegendInsideY(Number(event.target.value))
-                      }
-                    />
-                  </label>
-                </div>
-              ) : null}
             </div>
             </div>
           ) : (
             <div className="style-panel">
           <div className="plot-control-group">
-            <h3>Journal preset</h3>
+            <h3>Presets</h3>
+            <p className="control-subheading">Journal</p>
             <div className="style-grid publication-grid">
               <label>
                 <span>Journal preset</span>
@@ -1225,6 +1380,164 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
             >
               Apply journal preset
             </button>
+
+            <div className="saved-style-section">
+              <p className="control-subheading">My saved styles</p>
+              <label className="saved-style-name">
+                <span>Style name</span>
+                <input
+                  value={stylePresetName}
+                  onChange={(event) => setStylePresetName(event.target.value)}
+                  placeholder="e.g. thesis figure"
+                />
+              </label>
+
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={saveCurrentStyle}
+                disabled={!stylePresetName.trim()}
+              >
+                <Save size={16} aria-hidden="true" />
+                <span>Save current style</span>
+              </button>
+
+              <label className="saved-style-name">
+                <span>Saved styles</span>
+                <select
+                  value={selectedStylePresetId}
+                  onChange={(event) => {
+                    const presetId = event.target.value;
+                    const preset = savedPlotStyles.find(
+                      (savedPreset) => savedPreset.id === presetId,
+                    );
+                    setSelectedStylePresetId(presetId);
+                    setStylePresetName(preset?.name ?? "");
+                    setStylePresetStatus("");
+                  }}
+                  disabled={savedPlotStyles.length === 0}
+                >
+                  <option value="">
+                    {savedPlotStyles.length === 0
+                      ? "No saved styles yet"
+                      : "Choose a saved style"}
+                  </option>
+                  {savedPlotStyles.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="control-button-row">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={applySavedStyle}
+                  disabled={!selectedStylePresetId}
+                >
+                  Apply style
+                </button>
+                <button
+                  type="button"
+                  className="icon-button danger"
+                  onClick={deleteSavedStyle}
+                  disabled={!selectedStylePresetId}
+                  aria-label="Delete saved style"
+                  title="Delete saved style"
+                >
+                  <Trash2 size={17} aria-hidden="true" />
+                </button>
+              </div>
+
+              {stylePresetStatus ? (
+                <span className="inline-status" aria-live="polite">
+                  {stylePresetStatus}
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="plot-control-group">
+            <h3>Legend</h3>
+            <div className="legend-controls">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={showLegend}
+                  onChange={(event) => setShowLegend(event.target.checked)}
+                />
+                <span>Show legend</span>
+              </label>
+
+              <label>
+                <span>Legend position</span>
+                <select
+                  value={legendPosition}
+                  onChange={(event) =>
+                    setLegendPosition(event.target.value as LegendPosition)
+                  }
+                >
+                  <option value="right">Right</option>
+                  <option value="top">Top</option>
+                  <option value="bottom">Bottom</option>
+                  <option value="inside">Inside</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Legend size</span>
+                <input
+                  type="number"
+                  min="8"
+                  max="240"
+                  value={legendSize}
+                  onChange={(event) => setLegendSize(Number(event.target.value))}
+                />
+              </label>
+
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={forceSingleLegend}
+                  onChange={(event) => setForceSingleLegend(event.target.checked)}
+                />
+                <span>Keep legend for one m/z</span>
+              </label>
+            </div>
+
+            {legendPosition === "inside" ? (
+              <div className="inside-legend-controls">
+                <label>
+                  <span>Legend x</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={legendInsideX}
+                    onChange={(event) =>
+                      setLegendInsideX(Number(event.target.value))
+                    }
+                  />
+                </label>
+
+                <label>
+                  <span>Legend y</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={legendInsideY}
+                    onChange={(event) =>
+                      setLegendInsideY(Number(event.target.value))
+                    }
+                  />
+                </label>
+              </div>
+            ) : null}
           </div>
 
           <div className="plot-control-group">
@@ -1383,17 +1696,6 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                   max="240"
                   value={tickSize}
                   onChange={(event) => setTickSize(Number(event.target.value))}
-                />
-              </label>
-
-              <label>
-                <span>Legend size</span>
-                <input
-                  type="number"
-                  min="8"
-                  max="240"
-                  value={legendSize}
-                  onChange={(event) => setLegendSize(Number(event.target.value))}
                 />
               </label>
 
