@@ -54,7 +54,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 28px clamp(20px, 4vw, 56px);
+  padding: 16px clamp(18px, 3vw, 40px);
   background: #13202d;
   color: #ffffff;
   border-bottom: 4px solid #0f766e;
@@ -76,7 +76,7 @@ button {
 }
 
 .app-header h1 {
-  font-size: clamp(1.55rem, 3vw, 2.4rem);
+  font-size: clamp(1.4rem, 2vw, 1.9rem);
   line-height: 1.08;
 }
 
@@ -91,7 +91,7 @@ button {
 .summary-strip span {
   display: inline-flex;
   align-items: center;
-  min-height: 32px;
+  min-height: 30px;
   padding: 6px 10px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.1);
@@ -104,7 +104,7 @@ button {
 .workspace-tabs {
   display: flex;
   gap: 6px;
-  padding: 12px clamp(14px, 3vw, 40px) 0;
+  padding: 8px clamp(14px, 3vw, 40px) 0;
   overflow-x: auto;
   background: #eef2f6;
 }
@@ -113,7 +113,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 42px;
+  min-height: 38px;
   padding: 0 16px;
   border: 1px solid var(--line);
   border-bottom-color: transparent;
@@ -133,14 +133,14 @@ button {
 
 .app-main {
   display: grid;
-  gap: 18px;
-  padding: 20px clamp(14px, 3vw, 40px) 40px;
+  gap: 12px;
+  padding: 12px clamp(14px, 3vw, 40px) 16px;
   min-width: 0;
 }
 
 .workspace-tab-panel {
   display: grid;
-  gap: 18px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -155,7 +155,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow);
-  padding: clamp(16px, 2.5vw, 24px);
+  padding: 16px;
 }
 
 .section-header {
@@ -163,7 +163,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .section-header h2 {
@@ -625,8 +625,38 @@ label:has(input:disabled) {
 .plot-menu,
 .style-panel {
   display: grid;
-  gap: 16px;
+  gap: 12px;
   margin-bottom: 14px;
+}
+
+.style-subtabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, 32px);
+  align-content: start;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.style-subtab-button {
+  min-width: 0;
+  min-height: 32px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.style-subtab-button.active {
+  background: #ffffff;
+  color: var(--teal-dark);
+  box-shadow: 0 1px 4px rgba(30, 41, 59, 0.1);
 }
 
 .plot-workbench {
@@ -638,6 +668,7 @@ label:has(input:disabled) {
 
 .plot-settings-panel {
   display: grid;
+  align-content: start;
   gap: 14px;
   max-height: calc(100vh - 150px);
   min-width: 0;
@@ -665,6 +696,7 @@ label:has(input:disabled) {
 
 .plot-settings-panel .plot-menu,
 .plot-settings-panel .style-panel {
+  align-content: start;
   margin-bottom: 0;
 }
 
@@ -702,6 +734,10 @@ label:has(input:disabled) {
   gap: 10px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+}
+
+.plot-control-group[hidden] {
+  display: none;
 }
 
 .plot-control-group:first-child {
@@ -835,7 +871,9 @@ label:has(input:disabled) {
   display: grid;
   justify-items: center;
   width: 100%;
+  height: 100%;
   min-width: 0;
+  min-height: 0;
 }
 
 .plot-shell {
@@ -877,6 +915,64 @@ label:has(input:disabled) {
 
 .processed-table {
   min-width: 1500px;
+}
+
+@media (min-width: 981px) {
+  .plot-view-active {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .plot-view-active .app-main,
+  .plot-view-active .workspace-tab-panel,
+  .plot-workspace-section,
+  .plot-workbench {
+    min-height: 0;
+  }
+
+  .plot-view-active .app-main,
+  .plot-view-active .workspace-tab-panel,
+  .plot-workspace-section {
+    height: 100%;
+  }
+
+  .plot-view-active .app-main {
+    overflow: hidden;
+  }
+
+  .plot-workspace-section {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    padding: 14px;
+  }
+
+  .plot-workspace-section .section-header {
+    margin-bottom: 10px;
+  }
+
+  .plot-workbench {
+    height: 100%;
+    align-items: stretch;
+  }
+
+  .plot-settings-panel,
+  .plot-preview-pane {
+    position: static;
+    height: 100%;
+    max-height: none;
+  }
+
+  .plot-preview-pane {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .plot-preview-area {
+    align-content: start;
+  }
 }
 
 @media (max-width: 980px) {

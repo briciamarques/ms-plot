@@ -272,7 +272,13 @@ function App() {
   };
 
   return (
-    <div className="app-shell">
+    <div
+      className={
+        activeWorkspaceTab === "plot"
+          ? "app-shell plot-view-active"
+          : "app-shell"
+      }
+    >
       <header className="app-header">
         <div>
           <p className="eyebrow">PD-MS</p>

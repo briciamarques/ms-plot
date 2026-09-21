@@ -17,6 +17,13 @@ type PlotBuilderProps = {
 };
 
 type PlotTab = "data" | "style";
+type StyleTab =
+  | "presets"
+  | "curve"
+  | "legend"
+  | "publication"
+  | "appearance"
+  | "colors";
 type PlotFont =
   | "Arial"
   | "Helvetica"
@@ -77,6 +84,15 @@ type SavedPlotStyle = {
 
 const MM_PER_INCH = 25.4;
 const STYLE_PRESETS_STORAGE_KEY = "pd-ms-plot-style-presets-v1";
+
+const styleTabs: Array<{ key: StyleTab; label: string }> = [
+  { key: "presets", label: "Presets" },
+  { key: "curve", label: "Curve" },
+  { key: "legend", label: "Legend" },
+  { key: "publication", label: "Publication" },
+  { key: "appearance", label: "Appearance" },
+  { key: "colors", label: "Colors" },
+];
 
 const loadSavedPlotStyles = (): SavedPlotStyle[] => {
   if (typeof window === "undefined") {
@@ -318,6 +334,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   const plotRef = useRef<HTMLDivElement | null>(null);
   const previewAreaRef = useRef<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState<PlotTab>("data");
+  const [activeStyleTab, setActiveStyleTab] = useState<StyleTab>("curve");
   const [xAxis, setXAxis] = useState<XAxisKey>("acqTime");
   const [yMode, setYMode] = useState<YMode>("absolute");
   const [title, setTitle] = useState("Ion intensity plot");
@@ -373,6 +390,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   const [selectedStylePresetId, setSelectedStylePresetId] = useState("");
   const [stylePresetStatus, setStylePresetStatus] = useState("");
   const [previewAreaWidth, setPreviewAreaWidth] = useState(0);
+  const [previewAreaHeight, setPreviewAreaHeight] = useState(0);
 
   const shouldShowLegend =
     showLegend && (forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
@@ -451,7 +469,12 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
 
     const maxPreviewWidth =
       previewAreaWidth > 0 ? previewAreaWidth : safeExportWidth;
-    const maxPreviewHeight = Math.max(220, plotHeight);
+    const maxPreviewHeight = Math.max(
+      180,
+      previewAreaHeight > 0
+        ? Math.min(plotHeight, previewAreaHeight)
+        : plotHeight,
+    );
     const scale = Math.min(
       1,
       maxPreviewWidth / safeExportWidth,
@@ -461,6 +484,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     return Number.isFinite(scale) && scale > 0 ? scale : 1;
   }, [
     plotHeight,
+    previewAreaHeight,
     previewAreaWidth,
     previewExportRatio,
     safeExportHeight,
@@ -521,13 +545,14 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
       return;
     }
 
-    const updatePreviewAreaWidth = () => {
+    const updatePreviewAreaSize = () => {
       setPreviewAreaWidth(previewAreaElement.clientWidth);
+      setPreviewAreaHeight(previewAreaElement.clientHeight);
     };
 
-    updatePreviewAreaWidth();
+    updatePreviewAreaSize();
 
-    const resizeObserver = new ResizeObserver(updatePreviewAreaWidth);
+    const resizeObserver = new ResizeObserver(updatePreviewAreaSize);
     resizeObserver.observe(previewAreaElement);
 
     return () => {
@@ -1080,7 +1105,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   };
 
   return (
-    <section className="workspace-section">
+    <section className="workspace-section plot-workspace-section">
       <div className="section-header">
         <div>
           <p className="section-kicker">Visualization</p>
@@ -1352,8 +1377,30 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
             </div>
           ) : (
             <div className="style-panel">
-          <div className="plot-control-group">
-            <h3>Presets</h3>
+          <div className="style-subtabs" role="tablist" aria-label="Style settings">
+            {styleTabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={activeStyleTab === tab.key}
+                className={
+                  activeStyleTab === tab.key
+                    ? "style-subtab-button active"
+                    : "style-subtab-button"
+                }
+                onClick={() => setActiveStyleTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div
+            className="plot-control-group"
+            hidden={activeStyleTab !== "presets"}
+          >
+            <h3>Journal and saved styles</h3>
             <p className="control-subheading">Journal</p>
             <div className="style-grid publication-grid">
               <label>
@@ -1483,7 +1530,10 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
             </div>
           </div>
 
-          <div className="plot-control-group">
+          <div
+            className="plot-control-group"
+            hidden={activeStyleTab !== "legend"}
+          >
             <h3>Legend</h3>
             <div className="legend-controls">
               <label className="checkbox-label">
@@ -1564,7 +1614,10 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
             ) : null}
           </div>
 
-          <div className="plot-control-group">
+          <div
+            className="plot-control-group"
+            hidden={activeStyleTab !== "curve"}
+          >
             <h3>Curve</h3>
             <div className="style-grid">
               <label>
@@ -1648,7 +1701,10 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
             ) : null}
           </div>
 
-          <div className="plot-control-group">
+          <div
+            className="plot-control-group"
+            hidden={activeStyleTab !== "publication"}
+          >
             <h3>Publication size and export</h3>
             <div className="style-grid publication-grid">
               <label>
@@ -1727,8 +1783,11 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
             </div>
           </div>
 
-          <div className="plot-control-group">
-            <h3>Presets</h3>
+          <div
+            className="plot-control-group"
+            hidden={activeStyleTab !== "presets"}
+          >
+            <h3>Quick styles</h3>
             <div className="style-actions">
               <button
                 type="button"
@@ -1755,7 +1814,10 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
             </div>
           </div>
 
-          <div className="plot-control-group">
+          <div
+            className="plot-control-group"
+            hidden={activeStyleTab !== "appearance"}
+          >
             <h3>Visual details</h3>
             <div className="style-grid">
               <label>
@@ -1864,7 +1926,10 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
             </div>
           </div>
 
-          <div className="plot-control-group">
+          <div
+            className="plot-control-group"
+            hidden={activeStyleTab !== "colors"}
+          >
             <h3>Plot colors</h3>
             <div className="style-grid color-settings-grid">
               <ColorControl
@@ -1893,7 +1958,10 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
             </div>
           </div>
 
-          <div className="plot-control-group">
+          <div
+            className="plot-control-group"
+            hidden={activeStyleTab !== "colors"}
+          >
             <h3>Curve colors</h3>
             <div className="trace-color-panel">
               {ionOptions.length === 0 ? (
