@@ -24,6 +24,12 @@ type PlotFont =
   | "Calibri"
   | "Inter, ui-sans-serif, system-ui, sans-serif";
 type LineShape = "linear" | "spline";
+type CurveMode =
+  | "connect"
+  | "polynomial"
+  | "exponential"
+  | "logistic"
+  | "auto";
 type TickFormat = "auto" | "plain" | "scientific";
 type XValueScale = "raw" | "msToSeconds" | "custom";
 type JournalPresetKey = "jasms-single";
@@ -47,6 +53,8 @@ type PlotStyleSettings = {
   lineWidth: number;
   markerSize: number;
   lineShape: LineShape;
+  curveMode?: CurveMode;
+  polynomialDegree?: number;
   previewExportRatio: boolean;
   plotHeight: number;
   exportWidth: number;
@@ -342,6 +350,8 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   const [lineWidth, setLineWidth] = useState(2.8);
   const [markerSize, setMarkerSize] = useState(5);
   const [lineShape, setLineShape] = useState<LineShape>("linear");
+  const [curveMode, setCurveMode] = useState<CurveMode>("connect");
+  const [polynomialDegree, setPolynomialDegree] = useState(3);
   const [previewExportRatio, setPreviewExportRatio] = useState(true);
   const [plotHeight, setPlotHeight] = useState(640);
   const [exportWidth, setExportWidth] = useState(1000);
@@ -393,11 +403,15 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
         lineWidth,
         markerSize,
         lineShape,
+        curveMode,
+        polynomialDegree,
       }, xValueMultiplier),
     [
+      curveMode,
       lineShape,
       lineWidth,
       markerSize,
+      polynomialDegree,
       rows,
       shouldShowLegend,
       traceColors,
@@ -677,6 +691,8 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     setLineWidth(2.8);
     setMarkerSize(5);
     setLineShape("linear");
+    setCurveMode("connect");
+    setPolynomialDegree(3);
     setPreviewExportRatio(true);
     setPlotHeight(640);
     setExportWidth(1000);
@@ -699,6 +715,8 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     setLineWidth(2.5);
     setMarkerSize(8);
     setLineShape("linear");
+    setCurveMode("connect");
+    setPolynomialDegree(3);
     setPreviewExportRatio(true);
     setPlotHeight(640);
     setExportWidth(1400);
@@ -742,6 +760,8 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     lineWidth,
     markerSize,
     lineShape,
+    curveMode,
+    polynomialDegree,
     previewExportRatio,
     plotHeight,
     exportWidth: safeExportWidth,
@@ -815,6 +835,8 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     setLineWidth(settings.lineWidth);
     setMarkerSize(settings.markerSize);
     setLineShape(settings.lineShape);
+    setCurveMode(settings.curveMode ?? "connect");
+    setPolynomialDegree(settings.polynomialDegree ?? 3);
     setPreviewExportRatio(settings.previewExportRatio);
     setPlotHeight(settings.plotHeight);
     setExportWidth(settings.exportWidth);
@@ -948,6 +970,8 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     setLineWidth(pointsToPixels(0.7, dpi));
     setMarkerSize(pointsToPixels(1.1, dpi));
     setLineShape("linear");
+    setCurveMode("connect");
+    setPolynomialDegree(3);
     setPreviewExportRatio(true);
     setPlotHeight(720);
     setAxisColor("#111111");
@@ -1541,6 +1565,90 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
           </div>
 
           <div className="plot-control-group">
+            <h3>Curve</h3>
+            <div className="style-grid">
+              <label>
+                <span>Curve display</span>
+                <select
+                  value={curveMode}
+                  onChange={(event) =>
+                    setCurveMode(event.target.value as CurveMode)
+                  }
+                >
+                  <option value="connect">Connect points</option>
+                  <option value="auto">Auto fit</option>
+                  <option value="polynomial">Polynomial fit</option>
+                  <option value="exponential">Exponential plateau</option>
+                  <option value="logistic">Sigmoidal (logistic)</option>
+                </select>
+              </label>
+
+              {curveMode === "polynomial" ? (
+                <label>
+                  <span>Polynomial degree</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="6"
+                    step="1"
+                    value={polynomialDegree}
+                    onChange={(event) =>
+                      setPolynomialDegree(
+                        Math.min(6, Math.max(1, Number(event.target.value))),
+                      )
+                    }
+                  />
+                </label>
+              ) : (
+                <label>
+                  <span>Line shape</span>
+                  <select
+                    value={lineShape}
+                    onChange={(event) =>
+                      setLineShape(event.target.value as LineShape)
+                    }
+                  >
+                    <option value="linear">Straight</option>
+                    <option value="spline">Smooth</option>
+                  </select>
+                </label>
+              )}
+
+              <label>
+                <span>Line width</span>
+                <input
+                  type="number"
+                  min="0.5"
+                  max="60"
+                  step="0.1"
+                  value={lineWidth}
+                  onChange={(event) => setLineWidth(Number(event.target.value))}
+                />
+              </label>
+
+              <label>
+                <span>Marker size</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="120"
+                  step="0.5"
+                  value={markerSize}
+                  onChange={(event) => setMarkerSize(Number(event.target.value))}
+                />
+              </label>
+            </div>
+
+            {curveMode !== "connect" ? (
+              <p className="fit-guidance">
+                {curveMode === "auto"
+                  ? "Auto compares cubic polynomial, exponential and logistic fits for each m/z. Hover the curve to see the selected model and R2."
+                  : "The fit uses numeric x values. Hover the curve to see the model and R2."}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="plot-control-group">
             <h3>Publication size and export</h3>
             <div className="style-grid publication-grid">
               <label>
@@ -1697,41 +1805,6 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                   value={tickSize}
                   onChange={(event) => setTickSize(Number(event.target.value))}
                 />
-              </label>
-
-              <label>
-                <span>Line width</span>
-                <input
-                  type="number"
-                  min="0.5"
-                  max="60"
-                  step="0.1"
-                  value={lineWidth}
-                  onChange={(event) => setLineWidth(Number(event.target.value))}
-                />
-              </label>
-
-              <label>
-                <span>Marker size</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="120"
-                  step="0.5"
-                  value={markerSize}
-                  onChange={(event) => setMarkerSize(Number(event.target.value))}
-                />
-              </label>
-
-              <label>
-                <span>Line shape</span>
-                <select
-                  value={lineShape}
-                  onChange={(event) => setLineShape(event.target.value as LineShape)}
-                >
-                  <option value="linear">Straight</option>
-                  <option value="spline">Smooth</option>
-                </select>
               </label>
 
               <label>
