@@ -45,6 +45,7 @@ type RasterDpi = 300 | 600 | 1200;
 
 type PlotStyleSettings = {
   fontFamily: PlotFont;
+  showTitle?: boolean;
   titleSize: number;
   axisTitleSize: number;
   tickSize: number;
@@ -338,6 +339,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   const [xAxis, setXAxis] = useState<XAxisKey>("acqTime");
   const [yMode, setYMode] = useState<YMode>("absolute");
   const [title, setTitle] = useState("Ion intensity plot");
+  const [showTitle, setShowTitle] = useState(true);
   const [xTitle, setXTitle] = useState(axisLabel("acqTime"));
   const [xUnit, setXUnit] = useState("ms");
   const [yTitle, setYTitle] = useState("Absolute intensity");
@@ -394,6 +396,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
 
   const shouldShowLegend =
     showLegend && (forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
+  const hasVisibleTitle = showTitle && title.trim().length > 0;
 
   const ionOptions = useMemo(() => {
     const options = new Map<
@@ -452,10 +455,10 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   const outputWidthMm = mmFromPixels(safeExportWidth, rasterDpi);
   const outputHeightMm = mmFromPixels(safeExportHeight, rasterDpi);
   const smallestFontPt = Math.min(
-    pixelsToPoints(titleSize, rasterDpi),
     pixelsToPoints(axisTitleSize, rasterDpi),
     pixelsToPoints(tickSize, rasterDpi),
-    pixelsToPoints(legendSize, rasterDpi),
+    ...(hasVisibleTitle ? [pixelsToPoints(titleSize, rasterDpi)] : []),
+    ...(shouldShowLegend ? [pixelsToPoints(legendSize, rasterDpi)] : []),
   );
   const smallestLinePt = Math.min(
     pixelsToPoints(axisLineWidth, rasterDpi),
@@ -576,13 +579,15 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     const yTickFormatValue = tickFormatValue(yTickFormat);
 
     const layout = {
-      title: {
-        text: title,
-        font: { size: titleSize, family: fontFamily },
-        xref: "paper",
-        x: 0.5,
-        xanchor: "center",
-      },
+      title: hasVisibleTitle
+        ? {
+            text: title,
+            font: { size: titleSize, family: fontFamily },
+            xref: "paper",
+            x: 0.5,
+            xanchor: "center",
+          }
+        : undefined,
       xaxis: {
         title: {
           text: axisTitleWithUnit(xTitle, xUnit),
@@ -639,7 +644,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
       margin: {
         l: 72,
         r: shouldShowLegend && legendPosition === "right" ? 180 : 32,
-        t: 72,
+        t: hasVisibleTitle ? 72 : 32,
         b: shouldShowLegend && legendPosition === "bottom" ? 112 : 88,
       },
       autosize: !previewExportRatio,
@@ -671,6 +676,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     axisTitleSize,
     fontFamily,
     gridColor,
+    hasVisibleTitle,
     isActive,
     legendInsideX,
     legendInsideY,
@@ -706,6 +712,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
 
   const applyPaperStyle = () => {
     setFontFamily("Arial");
+    setShowTitle(true);
     setTitleSize(20);
     setAxisTitleSize(18);
     setTickSize(15);
@@ -730,6 +737,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
 
   const applyDefaultStyle = () => {
     setFontFamily("Inter, ui-sans-serif, system-ui, sans-serif");
+    setShowTitle(true);
     setTitleSize(18);
     setAxisTitleSize(14);
     setTickSize(12);
@@ -770,6 +778,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
 
   const currentStyleSettings = (): PlotStyleSettings => ({
     fontFamily,
+    showTitle,
     titleSize,
     axisTitleSize,
     tickSize,
@@ -845,6 +854,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
 
     const settings = preset.settings;
     setFontFamily(settings.fontFamily);
+    setShowTitle(settings.showTitle ?? true);
     setTitleSize(settings.titleSize);
     setAxisTitleSize(settings.axisTitleSize);
     setTickSize(settings.tickSize);
@@ -985,6 +995,7 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     const dpi = selectedFigureContent.recommendedDpi;
 
     setFontFamily("Arial");
+    setShowTitle(true);
     setTitleSize(pointsToPixels(8, dpi));
     setAxisTitleSize(pointsToPixels(8, dpi));
     setTickSize(pointsToPixels(7, dpi));
@@ -1192,7 +1203,17 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                   <input
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
+                    disabled={!showTitle}
                   />
+                </label>
+
+                <label className="checkbox-label plot-title-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showTitle}
+                    onChange={(event) => setShowTitle(event.target.checked)}
+                  />
+                  <span>Show plot title</span>
                 </label>
 
                 <label>
