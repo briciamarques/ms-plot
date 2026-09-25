@@ -128,7 +128,10 @@ New plots use the example's Arial appearance (28 px axis titles, 24 px ticks and
 legend, 2.5 px lines, 7 px markers, 1000 × 800 output). The default legend sits
 inside the top of the axes. Under **Plot → Style → Legend**,
 choose automatic columns or a maximum of 1–6 columns, plus top, bottom, right or
-manual inside placement. Columns adapt to available width. Projects and saved
+manual inside placement. Inside columns form a compact block: choose **2** and
+use **Legend horizontal position** and **Legend vertical position** to move it.
+**Reset legend to top** restores the default placement while retaining the column
+choice. Columns adapt to available width. Projects and saved
 styles retain these choices. Existing projects retain their saved appearance;
 **Style → Presets → Use default Arial style** applies the new appearance without
 changing extraction, normalization or smoothing.
@@ -136,7 +139,8 @@ changing extraction, normalization or smoothing.
 Enable **Highlight one m/z on click** in the same Legend panel to keep a selected
 ion's color and gray all other ions. Click its legend entry or a plotted point;
 click it again, use **Restore all colors**, or disable the option to reset.
-Measured points and fitted/smoothed lines highlight together. The selected ion
+Measured points and fitted/smoothed lines highlight together and are drawn above
+all gray traces, keeping the legend order stable. The selected ion
 and enabled mode are saved in projects; values, normalization and CSV/TXT data
 are unchanged. With the option disabled, the normal hide/show legend behavior
 remains available. The handlers use [Plotly's click events](https://plotly.com/javascript/plotlyjs-events/).

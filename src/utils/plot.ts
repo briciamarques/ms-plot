@@ -21,6 +21,9 @@ export type PlotTrace = {
   showlegend: boolean;
   legendgroup?: string;
   meta: { ionId: string };
+  legendrank?: number;
+  uid?: string;
+  legend?: string;
 };
 
 export type TraceStyleOptions = {
@@ -684,7 +687,10 @@ export const buildPlotData = (
         },
       ];
     },
-  );
+  ).map((trace, index) => ({ ...trace, legendrank: index, uid: JSON.stringify([trace.legendgroup, trace.mode]) }))
+    // Draw the selected ion last. Stable legend ranks and trace IDs preserve
+    // legend order and click identity while moving both lines and points forward.
+    .sort((a, b) => Number(a.meta.ionId === highlightedIonId) - Number(b.meta.ionId === highlightedIonId));
 };
 
 export const legendLayout = (
@@ -745,12 +751,15 @@ export const legendGeometry = (
   const longest = Math.max(...names.map(name => name.replace(/<[^>]*>/g, "").length));
   const entryWidth = Math.max(100, longest * fontSize * 0.65 + 70);
   if (resolved === "right") margin.r = Math.ceil(entryWidth + 24);
-  if (resolved !== "top" && resolved !== "bottom" && resolved !== "insideTop") return { legend: base, margin, columns: 1 };
+  if (resolved !== "top" && resolved !== "bottom" && resolved !== "insideTop" && resolved !== "inside") return { legend: base, margin, columns: 1 };
   const fittingColumns = Math.max(1, Math.floor((width - margin.l - margin.r) / entryWidth));
   const columns = Math.max(1, Math.min(names.length, fittingColumns, requestedColumns > 0 ? Math.floor(requestedColumns) : fittingColumns));
   const rows = Math.ceil(names.length / columns);
-  if (resolved === "insideTop") return {
-    legend: { orientation: "h", x: 0.02, y: 0.98, xanchor: "left", yanchor: "top",
+  if (resolved === "insideTop" || resolved === "inside") return {
+    legend: { ...base, orientation: "h",
+      x: resolved === "insideTop" ? 0.02 : insideX, y: resolved === "insideTop" ? 0.98 : insideY,
+      xanchor: resolved === "insideTop" ? "left" : insideX > 0.5 ? "right" : "left",
+      yanchor: resolved === "insideTop" ? "top" : insideY > 0.5 ? "top" : "bottom",
       traceorder: "normal", entrywidthmode: "fraction", entrywidth: 0.96 / columns,
       bgcolor: "rgba(255,255,255,0)", borderwidth: 0 },
     margin, columns,
@@ -763,5 +772,42 @@ export const legendGeometry = (
     legend: { ...base, traceorder: "normal", entrywidthmode: "fraction", entrywidth: 1 / columns,
       y: resolved === "top" ? 1 + 12 / plotHeight : -88 / plotHeight },
     margin, columns,
+  };
+};
+
+// Separate native legends make compact columns movable without changing trace
+// order or coupling the visibility of unrelated ions in one column.
+export const insideLegendColumns = (
+  traces: PlotTrace[], columns: number, plotWidth: number, fontSize: number,
+  x: number, y: number,
+) => {
+  const entries = traces.filter(trace => trace.showlegend).sort((a, b) => (a.legendrank ?? 0) - (b.legendrank ?? 0));
+  if (!entries.length) return { data: traces, legends: {} as Record<string, Record<string, unknown>> };
+  const count = Math.max(1, Math.min(columns, entries.length));
+  const groupColumn = new Map<string, number>();
+  const widths = Array.from({ length: count }, () => 0);
+  entries.forEach((trace, index) => {
+    const column = index % count;
+    groupColumn.set(trace.legendgroup ?? trace.meta.ionId, column);
+    const labelWidth = trace.name.replace(/<[^>]*>/g, "").length * fontSize * 0.65;
+    widths[column] = Math.max(widths[column], labelWidth + 70);
+  });
+  const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+  const available = Math.max(1, plotWidth);
+  const startX = Math.max(0, 1 - totalWidth / available) * Math.max(0, Math.min(1, x));
+  const legends: Record<string, Record<string, unknown>> = {};
+  let offset = 0;
+  const legendName = (column: number) => column === 0 ? "legend" : `legend${column + 1}`;
+  widths.forEach((width, column) => {
+    legends[legendName(column)] = {
+      orientation: "v", x: startX + offset / available, y,
+      xanchor: "left", yanchor: y > 0.5 ? "top" : "bottom",
+      bgcolor: "rgba(255,255,255,0)", borderwidth: 0, traceorder: "normal",
+    };
+    offset += width;
+  });
+  return {
+    data: traces.map(trace => ({ ...trace, legend: legendName(groupColumn.get(trace.legendgroup ?? trace.meta.ionId) ?? 0) })),
+    legends,
   };
 };

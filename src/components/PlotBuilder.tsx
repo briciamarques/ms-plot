@@ -9,6 +9,7 @@ import {
   buildPlotData,
   defaultTraceColors,
   legendGeometry,
+  insideLegendColumns,
   defaultPlotAppearance,
   traceName,
 } from "../utils/plot";
@@ -609,6 +610,16 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
       shouldShowLegend ? plotData.filter(trace => trace.showlegend).map(trace => trace.name) : [],
       plotRenderWidth ?? (previewAreaWidth || safeExportWidth), plotRenderHeight, legendSize,
       legendColumns, hasVisibleTitle, legendInsideX, legendInsideY);
+    const internalLegend = legendPosition === "inside" || legendPosition === "insideTop"
+      ? insideLegendColumns(plotData, legendSpace.columns,
+          (plotRenderWidth ?? (previewAreaWidth || safeExportWidth)) - legendSpace.margin.l - legendSpace.margin.r,
+          legendSize, legendPosition === "insideTop" ? 0.02 : legendInsideX,
+          legendPosition === "insideTop" ? 0.98 : legendInsideY)
+      : undefined;
+    const legendStyle = {
+      uirevision: highlightOnClick ? "highlight" : "visibility",
+      font: { size: legendSize, family: fontFamily, color: axisColor },
+    };
 
     const layout = {
       title: hasVisibleTitle
@@ -671,9 +682,9 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
       showlegend: shouldShowLegend,
       legend: {
         ...legendSpace.legend,
-        uirevision: highlightOnClick ? "highlight" : "visibility",
-        font: { size: legendSize, family: fontFamily, color: axisColor },
+        ...legendStyle,
       },
+      ...Object.fromEntries(Object.entries(internalLegend?.legends ?? {}).map(([name, options]) => [name, { ...options, ...legendStyle }])),
       margin: legendSpace.margin,
       autosize: !previewExportRatio,
       ...(plotRenderWidth ? { width: plotRenderWidth } : {}),
@@ -705,7 +716,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     const pointClick = (event: PlotInteraction) => {
       if (highlightOnClick) selectIon(event.points?.[0]?.curveNumber);
     };
-    void Plotly.react(plotElement, plotData, layout, {
+    void Plotly.react(plotElement, internalLegend?.data ?? plotData, layout, {
       responsive: !previewExportRatio,
       displaylogo: false,
       modeBarButtonsToRemove: ["lasso2d", "select2d"],
@@ -1667,11 +1678,11 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
                   <option value="right">Right</option>
                   <option value="top">Top</option>
                   <option value="bottom">Bottom</option>
-                  <option value="inside">Inside</option>
+                  <option value="inside">Inside · custom position</option>
                 </select>
               </label>
 
-              {(legendPosition === "insideTop" || legendPosition === "auto" || legendPosition === "top" || legendPosition === "bottom") && <label>
+              {(legendPosition === "inside" || legendPosition === "insideTop" || legendPosition === "auto" || legendPosition === "top" || legendPosition === "bottom") && <label>
                 <span>Legend columns</span>
                 <select value={legendColumns} onChange={event => setLegendColumns(Number(event.target.value))}>
                   <option value="0">Automatic</option>
@@ -1700,43 +1711,46 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
               </label>
             </div>
 
-            <p className="fit-guidance">Inside · top places the legend within the upper part of the axes. Columns adapt to the available width; your selection is the maximum. You can also choose an outside position or move it manually with Inside.</p>
+            <p className="fit-guidance">Choose 2 columns to split the legend. Columns adapt to the available width; your selection is the maximum. Use the horizontal and vertical controls below to move an inside legend.</p>
             <label className="checkbox-label"><input type="checkbox" checked={highlightOnClick} onChange={event => {
               setHighlightOnClick(event.target.checked); setHighlightedIonId("");
             }} /><span>Highlight one m/z on click</span></label>
             {highlightOnClick && <>
-              <p className="fit-guidance">Click an m/z in the legend or a plotted point to keep its color and turn the others gray. Click it again to restore all colors. Values and normalization stay the same.</p>
+              <p className="fit-guidance">Click an m/z in the legend or a plotted point to bring it to the front, keep its color and turn the others gray. Click it again to restore all colors. Values and normalization stay the same.</p>
               <button type="button" className="secondary-button" disabled={!highlightedIonId} onClick={() => setHighlightedIonId("")}>Restore all colors</button>
             </>}
-            {legendPosition === "inside" ? (
+            {legendPosition === "inside" || legendPosition === "insideTop" ? (
               <div className="inside-legend-controls">
                 <label>
-                  <span>Legend x</span>
+                  <span>Legend horizontal position</span>
                   <input
                     type="range"
                     min="0"
                     max="1"
                     step="0.01"
-                    value={legendInsideX}
-                    onChange={(event) =>
-                      setLegendInsideX(Number(event.target.value))
-                    }
+                    value={legendPosition === "insideTop" ? 0.02 : legendInsideX}
+                    onChange={(event) => {
+                      if (legendPosition === "insideTop") setLegendInsideY(0.98);
+                      setLegendPosition("inside"); setLegendInsideX(Number(event.target.value));
+                    }}
                   />
                 </label>
 
                 <label>
-                  <span>Legend y</span>
+                  <span>Legend vertical position</span>
                   <input
                     type="range"
                     min="0"
                     max="1"
                     step="0.01"
-                    value={legendInsideY}
-                    onChange={(event) =>
-                      setLegendInsideY(Number(event.target.value))
-                    }
+                    value={legendPosition === "insideTop" ? 0.98 : legendInsideY}
+                    onChange={(event) => {
+                      if (legendPosition === "insideTop") setLegendInsideX(0.02);
+                      setLegendPosition("inside"); setLegendInsideY(Number(event.target.value));
+                    }}
                   />
                 </label>
+                <button type="button" className="secondary-button" onClick={() => setLegendPosition("insideTop")}>Reset legend to top</button>
               </div>
             ) : null}
           </div>

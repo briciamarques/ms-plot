@@ -19,7 +19,7 @@ const { parseBrukerExport, findBrukerFiles, roundMass } = await load('bruker');
 const { createProjectSnapshot, parseProjectSnapshot } = await load('project');
 const { processSpectra, extractBrukerIntensity, normalizeIntensities } = await load('processing');
 const { plotRowsToCsv, processedRowsToCsv } = await load('csv');
-const { buildPlotData, movingAverageValues, legendGeometry, defaultPlotAppearance } = await load('plot');
+const { buildPlotData, movingAverageValues, legendGeometry, insideLegendColumns, defaultPlotAppearance } = await load('plot');
 const { formatMz, formatIntensity } = await load('format');
 assert.equal(formatMz(100.1234567), '100.1234567');
 assert.equal(formatIntensity(12.3456789), '12.3456789');
@@ -158,16 +158,35 @@ assert.equal(insideLegend.columns,3);
 assert.equal(insideLegend.legend.y,0.98);
 assert.equal(insideLegend.legend.yanchor,'top');
 assert.equal(insideLegend.margin.t,32);
+const manualLegend=legendGeometry('inside',names,1000,800,24,2,false,0.75,0.65);
+assert.equal(manualLegend.columns,2);
+assert.equal(manualLegend.legend.orientation,'h');
+assert.equal(manualLegend.legend.x,0.75);
+assert.equal(manualLegend.legend.y,0.65);
 const emphasisRows = [...fixedRows,...fixedRows.map(r=>({...r,id:r.id+'other',ionId:'other',targetMz:101}))];
 for (const curveMode of ['connect','movingAverage','polynomial']) {
   const style={...smoothStyle,curveMode,colors:{ion:'#ff0000',other:'#00bbaa'}};
   const normal=buildPlotData(emphasisRows,'retentionTime','absolute',true,style);
   const focused=buildPlotData(emphasisRows,'retentionTime','absolute',true,{...style,highlightedIonId:'ion'});
-  assert.deepEqual(focused.map(t=>[t.x,t.y]),normal.map(t=>[t.x,t.y]));
+  normal.forEach(trace=>{
+    const match=focused.find(t=>t.uid===trace.uid);
+    assert.deepEqual([match.x,match.y,match.legendrank],[trace.x,trace.y,trace.legendrank]);
+  });
   focused.forEach(t=>{
     assert.equal(t.line.color,t.meta.ionId==='ion'?'#ff0000':'#b8b8b8');
     assert.equal(t.marker.color,t.line.color);
   });
+  const front=focused.findIndex(t=>t.meta.ionId==='ion');
+  assert.ok(front>0);
+  assert.ok(focused.slice(front).every(t=>t.meta.ionId==='ion'));
+  assert.deepEqual([...focused].sort((a,b)=>a.legendrank-b.legendrank).map(t=>t.uid),normal.map(t=>t.uid));
+  const placed=insideLegendColumns(focused,2,896,24,0.8,0.75);
+  assert.equal(Object.keys(placed.legends).length,2);
+  assert.ok(placed.legends.legend.x>0);
+  assert.ok(placed.legends.legend2.x>placed.legends.legend.x);
+  assert.ok(placed.data.filter(t=>t.meta.ionId==='ion').every(t=>t.legend==='legend'));
+  assert.ok(placed.data.filter(t=>t.meta.ionId==='other').every(t=>t.legend==='legend2'));
+  assert.deepEqual(placed.data.map(t=>[t.x,t.y,t.uid]),focused.map(t=>[t.x,t.y,t.uid]));
   assert.deepEqual(buildPlotData(emphasisRows,'retentionTime','absolute',true,{...style,highlightedIonId:'missing'}),normal);
 }
 project.plotSettings={...project.plotSettings,legendPosition:'auto',legendColumns:3};
