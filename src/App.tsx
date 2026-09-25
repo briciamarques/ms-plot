@@ -14,6 +14,7 @@ import type {
 } from "./types";
 import { emptyMetadata } from "./types";
 import { createId } from "./utils/id";
+import { defaultPlotAppearance } from "./utils/plot";
 import { parseSpectrumTxt } from "./utils/parser";
 import { processSpectra } from "./utils/processing";
 import {
@@ -342,9 +343,8 @@ function App() {
               setPlotSelectedOnly(true);
               setPlotInitial({ xAxis: "retentionTime", xTitle: "Time", xUnit: "min", xValueScale: "secondsToMinutes", xValueMultiplier: 1 / 60,
                 yMode: "selectedSum", yTitle: "Relative intensity", yUnit: "%", yMin: "0", yMax: "100", xMin: "0",
-                showTitle: false, curveMode: "movingAverage", movingAverageWindow: 5, lineShape: "linear", lineWidth: 2.5, markerSize: 7,
-                exportWidth: 1000, exportHeight: 800, tickSize: 24, axisTitleSize: 28, legendSize: 24,
-                legendPosition: "inside", legendInsideY: 0.62, traceColors: Object.fromEntries(presetIons.map((ion, i) => [ion.id, colors[i]])) });
+                ...defaultPlotAppearance, curveMode: "movingAverage", movingAverageWindow: 5, lineShape: "linear",
+                traceColors: Object.fromEntries(presetIons.map((ion, i) => [ion.id, colors[i]])) });
               setPlotRevision(value => value + 1);
               setActiveWorkspaceTab("plot");
             } else if (files.length === 0) {

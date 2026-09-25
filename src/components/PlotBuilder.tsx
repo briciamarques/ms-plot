@@ -8,7 +8,8 @@ import { downloadTextFile, plotRowsToCsv } from "../utils/csv";
 import {
   buildPlotData,
   defaultTraceColors,
-  legendLayout,
+  legendGeometry,
+  defaultPlotAppearance,
   traceName,
 } from "../utils/plot";
 
@@ -64,6 +65,7 @@ type PlotStyleSettings = {
   legendSize: number;
   showLegend: boolean;
   legendPosition: LegendPosition;
+  legendColumns?: number;
   legendInsideX: number;
   legendInsideY: number;
   forceSingleLegend: boolean;
@@ -353,7 +355,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   const [xAxis, setXAxis] = useState<XAxisKey>(() => readPlotSetting(initialSettings, "xAxis", "acqTime"));
   const [yMode, setYMode] = useState<YMode>(() => readPlotSetting(initialSettings, "yMode", "absolute"));
   const [title, setTitle] = useState(() => readPlotSetting(initialSettings, "title", "Ion intensity plot"));
-  const [showTitle, setShowTitle] = useState(() => readPlotSetting(initialSettings, "showTitle", true));
+  const [showTitle, setShowTitle] = useState(() => readPlotSetting(initialSettings, "showTitle", defaultPlotAppearance.showTitle));
   const [xTitle, setXTitle] = useState(() => readPlotSetting(initialSettings, "xTitle", axisLabel("acqTime")));
   const [xUnit, setXUnit] = useState(() => readPlotSetting(initialSettings, "xUnit", "ms"));
   const [yTitle, setYTitle] = useState(() => readPlotSetting(initialSettings, "yTitle", yMode === "absolute" ? "Absolute intensity" : yMode === "selectedSum" ? "Share of selected ions" : "Intensity / own maximum"));
@@ -367,29 +369,30 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   const [yMin, setYMin] = useState(() => readPlotSetting(initialSettings, "yMin", ""));
   const [yMax, setYMax] = useState(() => readPlotSetting(initialSettings, "yMax", ""));
   const [showLegend, setShowLegend] = useState(() => readPlotSetting(initialSettings, "showLegend", true));
-  const [legendPosition, setLegendPosition] = useState<LegendPosition>(() => readPlotSetting(initialSettings, "legendPosition", "right"));
+  const [legendPosition, setLegendPosition] = useState<LegendPosition>(() => readPlotSetting(initialSettings, "legendPosition", defaultPlotAppearance.legendPosition));
+  const [legendColumns, setLegendColumns] = useState(() => readPlotSetting(initialSettings, "legendColumns", 0));
   const [legendInsideX, setLegendInsideX] = useState(() => readPlotSetting(initialSettings, "legendInsideX", 0.98));
   const [legendInsideY, setLegendInsideY] = useState(() => readPlotSetting(initialSettings, "legendInsideY", 0.98));
   const [forceSingleLegend, setForceSingleLegend] = useState(() => readPlotSetting(initialSettings, "forceSingleLegend", true));
   const [xZoomOnly, setXZoomOnly] = useState(() => readPlotSetting(initialSettings, "xZoomOnly", true));
-  const [fontFamily, setFontFamily] = useState<PlotFont>(() => readPlotSetting(initialSettings, "fontFamily", "Arial"));
-  const [titleSize, setTitleSize] = useState(() => readPlotSetting(initialSettings, "titleSize", 20));
-  const [axisTitleSize, setAxisTitleSize] = useState(() => readPlotSetting(initialSettings, "axisTitleSize", 18));
-  const [tickSize, setTickSize] = useState(() => readPlotSetting(initialSettings, "tickSize", 15));
-  const [legendSize, setLegendSize] = useState(() => readPlotSetting(initialSettings, "legendSize", 14));
+  const [fontFamily, setFontFamily] = useState<PlotFont>(() => readPlotSetting(initialSettings, "fontFamily", defaultPlotAppearance.fontFamily));
+  const [titleSize, setTitleSize] = useState(() => readPlotSetting(initialSettings, "titleSize", defaultPlotAppearance.titleSize));
+  const [axisTitleSize, setAxisTitleSize] = useState(() => readPlotSetting(initialSettings, "axisTitleSize", defaultPlotAppearance.axisTitleSize));
+  const [tickSize, setTickSize] = useState(() => readPlotSetting(initialSettings, "tickSize", defaultPlotAppearance.tickSize));
+  const [legendSize, setLegendSize] = useState(() => readPlotSetting(initialSettings, "legendSize", defaultPlotAppearance.legendSize));
   const [showGrid, setShowGrid] = useState(() => readPlotSetting(initialSettings, "showGrid", false));
   const [showAxisBox, setShowAxisBox] = useState(() => readPlotSetting(initialSettings, "showAxisBox", true));
   const [axisLineWidth, setAxisLineWidth] = useState(() => readPlotSetting(initialSettings, "axisLineWidth", 2));
-  const [lineWidth, setLineWidth] = useState(() => readPlotSetting(initialSettings, "lineWidth", 2.8));
-  const [markerSize, setMarkerSize] = useState(() => readPlotSetting(initialSettings, "markerSize", 5));
+  const [lineWidth, setLineWidth] = useState(() => readPlotSetting(initialSettings, "lineWidth", defaultPlotAppearance.lineWidth));
+  const [markerSize, setMarkerSize] = useState(() => readPlotSetting(initialSettings, "markerSize", defaultPlotAppearance.markerSize));
   const [lineShape, setLineShape] = useState<LineShape>(() => readPlotSetting(initialSettings, "lineShape", "linear"));
   const [curveMode, setCurveMode] = useState<CurveMode>(() => readPlotSetting(initialSettings, "curveMode", "connect"));
   const [polynomialDegree, setPolynomialDegree] = useState(() => readPlotSetting(initialSettings, "polynomialDegree", 3));
   const [movingAverageWindow, setMovingAverageWindow] = useState(() => readPlotSetting(initialSettings, "movingAverageWindow", 5));
   const [previewExportRatio, setPreviewExportRatio] = useState(() => readPlotSetting(initialSettings, "previewExportRatio", true));
   const [plotHeight, setPlotHeight] = useState(() => readPlotSetting(initialSettings, "plotHeight", 640));
-  const [exportWidth, setExportWidth] = useState(() => readPlotSetting(initialSettings, "exportWidth", 1000));
-  const [exportHeight, setExportHeight] = useState(() => readPlotSetting(initialSettings, "exportHeight", 760));
+  const [exportWidth, setExportWidth] = useState(() => readPlotSetting(initialSettings, "exportWidth", defaultPlotAppearance.exportWidth));
+  const [exportHeight, setExportHeight] = useState(() => readPlotSetting(initialSettings, "exportHeight", defaultPlotAppearance.exportHeight));
   const [journalPreset, setJournalPreset] =
     useState<JournalPresetKey>(() => readPlotSetting(initialSettings, "journalPreset", "jasms-single"));
   const [figureContent, setFigureContent] = useState<FigureContent>(() => readPlotSetting(initialSettings, "figureContent", "color"));
@@ -409,7 +412,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   const [previewAreaWidth, setPreviewAreaWidth] = useState(0);
   const [previewAreaHeight, setPreviewAreaHeight] = useState(0);
 
-  useEffect(() => { settingsRef.current = { xAxis, yMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors }; });
+  useEffect(() => { settingsRef.current = { xAxis, yMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors }; });
 
   const shouldShowLegend =
     showLegend && (forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
@@ -591,6 +594,10 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     const yRange = parseRange(yMin, yMax, yDataBounds);
     const xTickFormatValue = tickFormatValue(xTickFormat);
     const yTickFormatValue = tickFormatValue(yTickFormat);
+    const legendSpace = legendGeometry(legendPosition,
+      shouldShowLegend ? plotData.filter(trace => trace.showlegend).map(trace => trace.name) : [],
+      plotRenderWidth ?? (previewAreaWidth || safeExportWidth), plotRenderHeight, legendSize,
+      legendColumns, hasVisibleTitle, legendInsideX, legendInsideY);
 
     const layout = {
       title: hasVisibleTitle
@@ -652,15 +659,10 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
       dragmode: "zoom",
       showlegend: shouldShowLegend,
       legend: {
-        ...legendLayout(legendPosition, legendInsideX, legendInsideY),
+        ...legendSpace.legend,
         font: { size: legendSize, family: fontFamily, color: axisColor },
       },
-      margin: {
-        l: 72,
-        r: shouldShowLegend && legendPosition === "right" ? 180 : 32,
-        t: hasVisibleTitle ? 72 : 32,
-        b: shouldShowLegend && legendPosition === "bottom" ? 112 : 88,
-      },
+      margin: legendSpace.margin,
       autosize: !previewExportRatio,
       ...(plotRenderWidth ? { width: plotRenderWidth } : {}),
       height: plotRenderHeight,
@@ -695,6 +697,9 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     legendInsideX,
     legendInsideY,
     legendPosition,
+    legendColumns,
+    previewAreaWidth,
+    safeExportWidth,
     legendSize,
     paperBackground,
     plotData,
@@ -750,29 +755,22 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   };
 
   const applyDefaultStyle = () => {
-    setFontFamily("Inter, ui-sans-serif, system-ui, sans-serif");
-    setShowTitle(true);
-    setTitleSize(18);
-    setAxisTitleSize(14);
-    setTickSize(12);
-    setLegendSize(12);
-    setShowGrid(true);
-    setShowAxisBox(false);
-    setAxisLineWidth(1);
-    setLineWidth(2.5);
-    setMarkerSize(8);
-    setLineShape("linear");
-    setCurveMode("connect");
-    setPolynomialDegree(3);
-    setPreviewExportRatio(true);
-    setPlotHeight(640);
-    setExportWidth(1400);
-    setExportHeight(900);
-    setAxisColor("#1e293b");
-    setGridColor("#d7dee8");
-    setPlotBackground("#f8fafc");
-    setPaperBackground("#ffffff");
-    setTraceColors({});
+    setFontFamily(defaultPlotAppearance.fontFamily);
+    setShowTitle(defaultPlotAppearance.showTitle);
+    setTitleSize(defaultPlotAppearance.titleSize);
+    setAxisTitleSize(defaultPlotAppearance.axisTitleSize);
+    setTickSize(defaultPlotAppearance.tickSize);
+    setLegendSize(defaultPlotAppearance.legendSize);
+    setLineWidth(defaultPlotAppearance.lineWidth);
+    setMarkerSize(defaultPlotAppearance.markerSize);
+    setExportWidth(defaultPlotAppearance.exportWidth);
+    setExportHeight(defaultPlotAppearance.exportHeight);
+    setLegendPosition(defaultPlotAppearance.legendPosition);
+    setLegendColumns(defaultPlotAppearance.legendColumns);
+    setShowLegend(true); setShowGrid(false); setShowAxisBox(true);
+    setAxisLineWidth(2); setPreviewExportRatio(true);
+    setAxisColor("#111111"); setPlotBackground("#ffffff"); setPaperBackground("#ffffff");
+    setStylePresetStatus("Default Arial appearance applied");
   };
 
   const applyMonoMagentaPalette = () => {
@@ -799,6 +797,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     legendSize,
     showLegend,
     legendPosition,
+    legendColumns,
     legendInsideX,
     legendInsideY,
     forceSingleLegend,
@@ -876,6 +875,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     setLegendSize(settings.legendSize);
     setShowLegend(settings.showLegend);
     setLegendPosition(settings.legendPosition);
+    setLegendColumns(settings.legendColumns ?? 0);
     setLegendInsideX(settings.legendInsideX);
     setLegendInsideY(settings.legendInsideY);
     setForceSingleLegend(settings.forceSingleLegend);
@@ -1508,6 +1508,8 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
               Apply journal preset
             </button>
 
+            <button type="button" className="secondary-button" onClick={applyDefaultStyle}>Use default Arial style</button>
+
             <div className="saved-style-section">
               <p className="control-subheading">My saved styles</p>
               <label className="saved-style-name">
@@ -1609,12 +1611,21 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
                     setLegendPosition(event.target.value as LegendPosition)
                   }
                 >
+                  <option value="auto">Automatic · outside curves</option>
                   <option value="right">Right</option>
                   <option value="top">Top</option>
                   <option value="bottom">Bottom</option>
                   <option value="inside">Inside</option>
                 </select>
               </label>
+
+              {(legendPosition === "auto" || legendPosition === "top" || legendPosition === "bottom") && <label>
+                <span>Legend columns</span>
+                <select value={legendColumns} onChange={event => setLegendColumns(Number(event.target.value))}>
+                  <option value="0">Automatic</option>
+                  {[1, 2, 3, 4, 5, 6].map(count => <option key={count} value={count}>{count}</option>)}
+                </select>
+              </label>}
 
               <label>
                 <span>Legend size</span>
@@ -1637,6 +1648,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
               </label>
             </div>
 
+            <p className="fit-guidance">Automatic places the legend above the axes with space reserved for every row. Columns adapt to the figure width and label length; your selection is the maximum. Inside is a manual position and may overlap curves.</p>
             {legendPosition === "inside" ? (
               <div className="inside-legend-controls">
                 <label>

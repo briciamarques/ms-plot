@@ -2,6 +2,12 @@ import { plotYValue } from "../types";
 import type { LegendPosition, ProcessedRow, XAxisKey, YMode } from "../types";
 import { formatMz } from "./format";
 
+export const defaultPlotAppearance = {
+  fontFamily: "Arial" as const, showTitle: false, titleSize: 28, axisTitleSize: 28,
+  tickSize: 24, legendSize: 24, lineWidth: 2.5, markerSize: 7,
+  exportWidth: 1000, exportHeight: 800, legendPosition: "auto" as const, legendColumns: 0,
+};
+
 export type PlotTrace = {
   x: Array<number | string>;
   y: number[];
@@ -718,5 +724,31 @@ export const legendLayout = (
     y: 1,
     xanchor: "left",
     yanchor: "top",
+  };
+};
+
+export const legendGeometry = (
+  position: LegendPosition, names: string[], width: number, height: number,
+  fontSize: number, requestedColumns = 0, hasTitle = false, insideX = 0.98, insideY = 0.98,
+) => {
+  const resolved = position === "auto" ? "top" : position;
+  const margin = { l: 72, r: 32, t: hasTitle ? 72 : 32, b: 88 };
+  const base = legendLayout(resolved, insideX, insideY);
+  if (!names.length) return { legend: base, margin, columns: 1 };
+  const longest = Math.max(...names.map(name => name.replace(/<[^>]*>/g, "").length));
+  const entryWidth = Math.max(100, longest * fontSize * 0.65 + 70);
+  if (resolved === "right") margin.r = Math.ceil(entryWidth + 24);
+  if (resolved !== "top" && resolved !== "bottom") return { legend: base, margin, columns: 1 };
+  const fittingColumns = Math.max(1, Math.floor((width - margin.l - margin.r) / entryWidth));
+  const columns = Math.max(1, Math.min(names.length, fittingColumns, requestedColumns > 0 ? Math.floor(requestedColumns) : fittingColumns));
+  const rows = Math.ceil(names.length / columns);
+  const legendHeight = Math.ceil(rows * (fontSize * 1.5 + 6));
+  if (resolved === "top") margin.t += legendHeight + 12;
+  else margin.b += legendHeight + 12;
+  const plotHeight = Math.max(1, height - margin.t - margin.b);
+  return {
+    legend: { ...base, traceorder: "normal", entrywidthmode: "fraction", entrywidth: 1 / columns,
+      y: resolved === "top" ? 1 + 12 / plotHeight : -88 / plotHeight },
+    margin, columns,
   };
 };

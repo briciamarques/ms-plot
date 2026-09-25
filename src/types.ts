@@ -79,7 +79,7 @@ export type XAxisKey =
 
 export type YMode = "absolute" | "relative" | "selectedSum";
 
-export type LegendPosition = "right" | "top" | "bottom" | "inside";
+export type LegendPosition = "auto" | "right" | "top" | "bottom" | "inside";
 
 export type ProjectSnapshot = {
   app: "PD-MS Plot Builder";

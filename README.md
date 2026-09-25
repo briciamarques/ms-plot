@@ -122,6 +122,17 @@ to validate its exports without copying experimental data into the repository.
 An optional second argument accepts a locally extracted Origin worksheet JSON
 for point-by-point comparison of the 279 normalized and 248 smoothed values.
 
+## Default appearance and legend
+
+New plots use the example's Arial appearance (28 px axis titles, 24 px ticks and
+legend, 2.5 px lines, 7 px markers, 1000 × 800 output). The default legend sits
+above the axes and reserves space for its rows. Under **Plot → Style → Legend**,
+choose automatic columns or a maximum of 1–6 columns, plus top, bottom, right or
+manual inside placement. Columns adapt to available width. Projects and saved
+styles retain these choices. Existing projects retain their saved appearance;
+**Style → Presets → Use default Arial style** applies the new appearance without
+changing extraction, normalization or smoothing.
+
 ## Data policy
 
 Do not commit real experimental `.txt` files, unpublished research results, real plots, or real processed data. The repository ignores `.txt` files by default and only allows small fictitious files in `example-data/`.

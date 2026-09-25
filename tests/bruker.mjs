@@ -19,7 +19,7 @@ const { parseBrukerExport, findBrukerFiles, roundMass } = await load('bruker');
 const { createProjectSnapshot, parseProjectSnapshot } = await load('project');
 const { processSpectra, extractBrukerIntensity, normalizeIntensities } = await load('processing');
 const { plotRowsToCsv, processedRowsToCsv } = await load('csv');
-const { buildPlotData, movingAverageValues } = await load('plot');
+const { buildPlotData, movingAverageValues, legendGeometry, defaultPlotAppearance } = await load('plot');
 const { formatMz, formatIntensity } = await load('format');
 assert.equal(formatMz(100.1234567), '100.1234567');
 assert.equal(formatIntensity(12.3456789), '12.3456789');
@@ -136,6 +136,25 @@ const restoredSmooth = parseProjectSnapshot(JSON.stringify(smoothProject));
 assert.deepEqual(restoredSmooth.files,fixed.files);
 assert.deepEqual(restoredSmooth.plotSettings,smoothProject.plotSettings);
 console.log('PASS: optional rounding, fixed time bins, partial final bin, moving average endpoints, separate runs, measured/smoothed export and saved settings.');
+
+const names=Array.from({length:9},(_,i)=>`<i>m/z</i> ${241+i}`);
+const automaticLegend=legendGeometry('auto',names,1000,800,24);
+assert.ok(automaticLegend.legend.y>1);
+assert.ok(automaticLegend.columns>1);
+assert.ok(automaticLegend.margin.t>32);
+const twoColumns=legendGeometry('top',names,1000,800,24,2);
+assert.equal(twoColumns.columns,2);
+assert.ok(twoColumns.margin.t>automaticLegend.margin.t);
+const narrowLegend=legendGeometry('auto',names,400,800,24,6);
+assert.equal(narrowLegend.columns,1);
+const bottomLegend=legendGeometry('bottom',names,1000,800,24,3);
+assert.ok(bottomLegend.legend.y<0);
+assert.ok(bottomLegend.margin.b>88);
+assert.equal(legendGeometry('auto',[],1000,800,24).margin.t,32);
+assert.equal(defaultPlotAppearance.fontFamily,'Arial');
+project.plotSettings={...project.plotSettings,legendPosition:'auto',legendColumns:3};
+assert.deepEqual(parseProjectSnapshot(JSON.stringify(project)).plotSettings,project.plotSettings);
+console.log('PASS: outside legend placement, column limits, reserved margins, narrow figures and persisted legend settings.');
 
 // Optional local validation: never copy real spectra into this repository.
 if (process.argv[2]) {
