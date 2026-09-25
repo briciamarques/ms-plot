@@ -42,7 +42,7 @@ export function SegmentSpectrumExport({ files, isActive }: { files: SpectrumFile
           <label className="segment-spectrum-selector">Segment
             <select value={selected.id} onChange={event => { setSelectedId(event.target.value); setCopyStatus(null); }}>
               {segments.map((file, index) => <option key={file.id} value={file.id}>
-                {index + 1}. {file.bruker!.source} — Segment {file.bruker!.segment} ({file.bruker!.startSeconds}–{file.bruker!.endSeconds} s)
+                {index + 1}. {file.bruker!.source} — Segment {file.bruker!.segment}{file.metadata.wavelength ? ` · ${file.metadata.wavelength} nm` : file.metadata.condition === "Laser off" ? " · Laser off" : ""} ({file.bruker!.startSeconds}–{file.bruker!.endSeconds} s)
               </option>)}
             </select>
           </label>

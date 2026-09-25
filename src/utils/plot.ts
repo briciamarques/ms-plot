@@ -2,6 +2,7 @@ import { plotYValue } from "../types";
 import type { LegendPosition, ProcessedRow, XAxisKey, YMode } from "../types";
 import { formatMz } from "./format";
 import { paletteColor, trmsColors, type ColorPaletteId } from "./colorPalettes";
+import { normalizeIntensities } from "./processing";
 
 export const defaultPlotAppearance = {
   fontFamily: "Arial" as const, showTitle: false, titleSize: 28, axisTitleSize: 28,
@@ -62,13 +63,23 @@ const getAxisRawValue = (row: ProcessedRow, axis: XAxisKey): string =>
   row.metadata[axis] ?? "";
 
 const getSortableNumber = (value: string): number | null => {
-  const match = value.trim().match(/^-?\d+(?:\.\d+)?/);
+  const match = value.trim().match(/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/i);
   if (!match) {
     return null;
   }
 
   const parsed = Number(match[0]);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const rowsForPlotAxis = (rows: ProcessedRow[], axis: XAxisKey): ProcessedRow[] => {
+  if (axis !== "wavelength") return rows;
+  // References have no wavelength. Keep them in the project, but exclude them
+  // from wavelength coordinates and from the plotted ions' own-maximum scale.
+  return normalizeIntensities(rows.filter(row => {
+    const value = getSortableNumber(row.metadata.wavelength);
+    return value !== null && value > 0;
+  }));
 };
 
 const getPlotXValue = (
@@ -564,7 +575,7 @@ const groupRows = (rows: ProcessedRow[]) => {
 
 export const movingAverageByRow = (rows: ProcessedRow[], axis: XAxisKey, mode: YMode, window = 5): Map<string, number> => {
   const result = new Map<string, number>();
-  groupRows(rows).forEach(group => {
+  groupRows(rowsForPlotAxis(rows, axis)).forEach(group => {
     const sorted = sortRowsByAxis(group, axis);
     const smoothed = movingAverageValues(sorted.map(row => plotYValue(row, mode)), window);
     sorted.forEach((row, index) => result.set(row.id, smoothed[index]));
@@ -580,6 +591,7 @@ export const buildPlotData = (
   style: TraceStyleOptions,
   xValueMultiplier = 1,
 ): PlotTrace[] => {
+  rows = rowsForPlotAxis(rows, axis);
   const rowsByIon = groupRows(rows);
   const ionIndexes = new Map([...new Set(rows.map(row => row.ionId))].map((id, index) => [id, index]));
   const highlightedIonId = rows.some(row => row.ionId === style.highlightedIonId) ? style.highlightedIonId : undefined;

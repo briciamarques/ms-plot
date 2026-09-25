@@ -1,7 +1,7 @@
 import { plotYValue } from "../types";
 import type { ProcessedRow, XAxisKey, YMode } from "../types";
 import { xAxisOptions, yModeOptions } from "../types";
-import { movingAverageByRow } from "./plot";
+import { movingAverageByRow, rowsForPlotAxis } from "./plot";
 
 const escapeCsvValue = (value: string | number | null): string => {
   const stringValue = value === null ? "" : String(value);
@@ -66,7 +66,7 @@ const yModeLabel = (mode: YMode): string =>
   yModeOptions.find((option) => option.key === mode)?.label ?? mode;
 
 const numericPrefix = (value: string): number | null => {
-  const match = value.trim().match(/^-?\d+(?:\.\d+)?/);
+  const match = value.trim().match(/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/i);
   if (!match) {
     return null;
   }
@@ -97,6 +97,7 @@ export const plotRowsToCsv = (
   delimiter = ",",
   movingAverageWindow?: number,
 ): string => {
+  rows = rowsForPlotAxis(rows, xAxis);
   const smoothed = movingAverageWindow === undefined ? undefined : movingAverageByRow(rows, xAxis, yMode, movingAverageWindow);
   const headers = [
     "plot x axis",

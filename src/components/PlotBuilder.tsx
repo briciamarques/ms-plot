@@ -8,6 +8,7 @@ import { queuePlotTask } from "../utils/plotLifecycle";
 import { axisRange, axisRangeLayout, numericBounds } from "../utils/axisRange";
 import {
   buildPlotData,
+  rowsForPlotAxis,
   legendGeometry,
   insideLegendColumns,
   defaultPlotAppearance,
@@ -295,7 +296,7 @@ function ColorControl({
   );
 }
 
-export function PlotBuilder({ rows, isActive = true, initialSettings = {}, settingsRef }: PlotBuilderProps) {
+export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings = {}, settingsRef }: PlotBuilderProps) {
   const plotRef = useRef<HTMLDivElement | null>(null);
   const renderQueue = useRef<Promise<void>>(Promise.resolve());
   const [plotError, setPlotError] = useState("");
@@ -304,6 +305,12 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   const [activeTab, setActiveTab] = useState<PlotTab>("data");
   const [activeStyleTab, setActiveStyleTab] = useState<StyleTab>("curve");
   const [xAxis, setXAxis] = useState<XAxisKey>(() => readPlotSetting(initialSettings, "xAxis", "acqTime"));
+  const rows = useMemo(() => rowsForPlotAxis(sourceRows, xAxis), [sourceRows, xAxis]);
+  const omittedWavelengthFiles = useMemo(() => {
+    if (xAxis !== "wavelength") return 0;
+    const visibleIds = new Set(rows.map(row => row.id));
+    return new Set(sourceRows.filter(row => !visibleIds.has(row.id)).map(row => row.fileId)).size;
+  }, [sourceRows, rows, xAxis]);
   const [yMode, setYMode] = useState<YMode>(() => readPlotSetting(initialSettings, "yMode", "absolute"));
   const [title, setTitle] = useState(() => readPlotSetting(initialSettings, "title", "Ion intensity plot"));
   const [showTitle, setShowTitle] = useState(() => readPlotSetting(initialSettings, "showTitle", defaultPlotAppearance.showTitle));
@@ -1223,6 +1230,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
             <div className="plot-menu">
             <div className="plot-control-group">
               <h3>Text and axes</h3>
+              {omittedWavelengthFiles > 0 && <p role="status">Segments without a positive numeric wavelength: {omittedWavelengthFiles}. Omitted from this plot and its normalization; available in Data and segment spectrum export.</p>}
               <div className="plot-controls">
                 <label>
                   <span>x axis</span>

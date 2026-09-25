@@ -15,7 +15,7 @@ React + TypeScript + Vite app for building ion intensity plots from multiple mas
 ## Bruker exports
 
 1. Open the run in DataAnalysis and run the lab export method. It must write
-   `data.ascii` (ESI ms1 line spectra) and `Segments.txt` into the same `.d` folder.
+   `data.ascii` (ESI line spectra, MS1 or MS/MS) and `Segments.txt` into the same `.d` folder.
 2. Open **Bruker files** and choose that folder, or choose both export files together.
    Only these two exports are read, locally in the browser. Raw `.yep`/`.baf` files
    are not decoded. Import one run at a time.
@@ -70,7 +70,7 @@ calculation and show a reimport warning; their lost decimals cannot be reconstru
 By default, this importer uses `Segments.txt`.
 Intervals are start-inclusive/end-exclusive, except the last endpoint is included.
 Overlapping intervals and corrupt scans are rejected. Empty segments, count
-mismatches, non-ESI-ms1 scans and scans in gaps or beyond boundaries are reported.
+mismatches, scans outside the selected spectrum type and scans in gaps or beyond boundaries are reported.
 The lab's original export method truncates boundaries to integer seconds. Thus
 some scans can fall outside its intervals; they are explicitly reported and
 excluded, never silently assigned to a neighboring segment. Exporting precise
@@ -86,7 +86,7 @@ Exact half-way mass ties round to the even bin. Do not enter multiple targets
 that round to the same bin: each selected target contributes to the denominator.
 
 Time segmentation can use exported boundaries (midpoint time) or fixed intervals
-starting at zero (start time). Fixed intervals include all valid ESI ms1 scans,
+starting at zero (start time). Fixed intervals include all valid scans of the selected spectrum type,
 including a partial last interval, matching the old Python workflow. Changing
 segmentation after import requires reimporting the exports.
 
@@ -184,6 +184,35 @@ Choosing a color preset clears individual overrides; **Reset colors** restores
 the TRMS palette. Palette selection and overrides are included in saved projects
 and styles. Existing projects retain their explicit saved colors until a preset
 is applied. Newly imported runs and new plots use the reference palette.
+
+## Bruker MS/MS and wavelength scans
+
+The importer detects ESI MS1 and MS/MS exports. If a file contains several MS
+levels, precursor masses or polarities, **Spectrum type** must be selected before
+importing. Scans from other types are excluded with a warning, never averaged
+together. The selected MS level, polarity and precursor are retained in projects.
+
+For a wavelength experiment, choose **Bruker files → Experiment axis → Wavelength
+scan (nm)**. This preserves the exported time boundaries. Enter the first and last
+wavelength and the signed step, optionally mark the first segment as laser off,
+then click **Fill wavelength sequence**. The sequence must match the segment
+count. Review or edit the assignments in the preview table; use `off` for a
+laser-off reference or blank for an unassigned reference. These labels are entered
+by the user, not inferred from signal intensity. Adding the segments selects that
+import for plotting and switches the x axis to wavelength in nm. Choose the ions
+for the new sample in **Ions**; existing ion selections are not replaced.
+
+Reference segments remain available in the metadata, full-data export and complete
+segment spectrum export. They are omitted from the wavelength graph and plot
+CSV/TXT, including its own-maximum normalization. No reference subtraction is
+applied. Switch the x axis back to acquisition time or segment to include them.
+Wavelength assignments and plot settings are saved with the project.
+
+ASCII scan times can have fewer decimals than segment boundaries. A scan just
+outside a boundary is assigned only when one segment uniquely matches within
+half the exported timestamp's last digit, capped at 0.01 seconds. Such assignments
+produce an explicit import warning. Original boundaries, m/z and intensities are
+preserved; real gaps and ambiguous matches remain excluded.
 
 ## Axis limits
 

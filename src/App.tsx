@@ -340,7 +340,7 @@ function App() {
           />
 
         <div className="workspace-tab-panel" hidden={activeWorkspaceTab !== "bruker"}>
-          <BrukerImport onImport={(imported, originPreset) => {
+          <BrukerImport onImport={(imported, originPreset, axis) => {
             setFiles(current => [...current, ...imported]);
             setSelectedIds(current => new Set([...current, ...imported.map(file => file.id)]));
             if (originPreset) {
@@ -355,6 +355,14 @@ function App() {
                 colorPalette: "trms", traceColors: {} });
               setPlotRevision(value => value + 1);
               setActiveWorkspaceTab("plot");
+            } else if (axis === "wavelength") {
+              setSelectedIds(new Set(imported.map(file => file.id)));
+              setPlotSelectedOnly(true);
+              setPlotInitial({ ...plotSettingsRef.current, xAxis: "wavelength", xTitle: "Wavelength", xUnit: "nm",
+                xValueScale: "raw", xValueMultiplier: 1, xMin: "", xMax: "" });
+              setPlotRevision(value => value + 1);
+              setActiveWorkspaceTab("ions");
+              setProjectStatus("Wavelength segments added. Choose the ions for this sample and click Load ion list. Plot uses wavelength in nm; save the project to keep the assignments.");
             } else if (files.length === 0) {
               setPlotInitial({ xAxis: "retentionTime", xTitle: "Acquisition time", xUnit: "s" });
               setPlotRevision(value => value + 1);

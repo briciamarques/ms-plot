@@ -37,6 +37,9 @@ export type SpectrumFile = {
     mzDecimals?: number;
     intervalSeconds?: number;
     runId?: string;
+    msLevel?: number;
+    precursor?: string;
+    polarity?: string;
   };
 };
 

@@ -15,7 +15,7 @@ for (const name of ['types', 'utils/id', 'utils/filenameMetadata', 'utils/bruker
   fs.writeFileSync(target, result);
 }
 const load = name => import(pathToFileURL(path.join(output, `utils/${name}.mjs`)));
-const { parseBrukerExport, findBrukerFiles, roundMass } = await load('bruker');
+const { parseBrukerExport, findBrukerFiles, roundMass, brukerChannels, wavelengthSequence, assignWavelengths } = await load('bruker');
 const { createProjectSnapshot, parseProjectSnapshot } = await load('project');
 const { processSpectra, extractBrukerIntensity, normalizeIntensities } = await load('processing');
 const { plotRowsToCsv, processedRowsToCsv } = await load('csv');
@@ -296,6 +296,56 @@ assert.equal(trmsPlotDefaults.highlightOnClick,false);
 const trmsProject = {...project,plotSettings:{...trmsPlotDefaults,traceColors:{'palette-ion-241':'#123456'}}};
 assert.deepEqual(parseProjectSnapshot(JSON.stringify(trmsProject)).plotSettings,trmsProject.plotSettings);
 console.log('PASS: reference colors by m/z across ordering/runs, manual overrides, color presets and saved TRMS settings.');
+
+// MS/MS must keep polarity, precursor and MS level separate. Synthetic scan
+// intensities deliberately differ so accidental channel mixing changes results.
+const ms2Scan = (time, precursor, intensity, polarity='+') => `${time},${polarity},ESI,ms2,${precursor},line,50-150,1,137.76 ${intensity}`;
+const ms2Ascii = [ms2Scan(0.1,'138',1000),ms2Scan(1.1,'138',20),ms2Scan(2.1,'138',40)].join('\n');
+const ms2 = parseBrukerExport(ms2Ascii,'3\n1 0 60\n2 60 120\n3 120 180','MS2.d');
+assert.equal(ms2.assignedScans,3);
+assert.equal(ms2.files[0].metadata.parentIon,'138');
+assert.equal(ms2.files[0].bruker.msLevel,2);
+assert.equal(ms2.files[0].bruker.polarity,'+');
+const mixed = [ms2Ascii,scan(0.2,['137.76 999']),ms2Scan(0.3,'120',500),ms2Scan(0.4,'138',600,'-')].join('\n');
+assert.equal(brukerChannels(mixed).length,4);
+assert.throws(()=>parseBrukerExport(mixed,'6\n1 0 180','mixed'),/Multiple spectrum types/);
+const selectedMs2 = parseBrukerExport(mixed,'6\n1 0 180','mixed','min','s',{channelId:brukerChannels(ms2Ascii)[0].id});
+assert.equal(selectedMs2.assignedScans,3);
+assert.equal(selectedMs2.files[0].peaks.length,3);
+assert.match(selectedMs2.warnings.join(' '),/3 scans excluded/);
+assert.throws(()=>parseBrukerExport(ms2Ascii.replace('137.76 20','bad'),'3\n1 0 180','damaged'),/Invalid m\/z/);
+const precisionBoundary = parseBrukerExport(ms2Scan(13.0074,'138',50),'1\n13 726.178976 780.442944','precision');
+assert.equal(precisionBoundary.assignedScans,1);
+assert.match(precisionBoundary.warnings[0],/rounding precision/);
+assert.throws(()=>parseBrukerExport(ms2Scan(13.01,'138',50),'1\n13 726.178976 780.442944','gap'),/No selected scans/);
+assert.throws(()=>parseBrukerExport(ms2Scan(0.1667,'138',50),'1\n1 0 10.001\n2 10.003 20','ambiguous'),/No selected scans/);
+const waveValues = wavelengthSequence(13,290,235,-5,true);
+assert.deepEqual(waveValues,['off','290','285','280','275','270','265','260','255','250','245','240','235']);
+assert.throws(()=>wavelengthSequence(13,290,235,-5,false),/needs 12 segments/);
+assert.throws(()=>wavelengthSequence(13,290,235,5,true),/negative step/);
+assert.throws(()=>wavelengthSequence(13,290,235,-6,true),/exactly/);
+assert.throws(()=>assignWavelengths(ms2.files,['off','bad','235']),/Segment 2/);
+assert.throws(()=>assignWavelengths(ms2.files,['off','0xff','235']),/Segment 2/);
+assert.throws(()=>assignWavelengths(ms2.files,['off','','']),/at least one/);
+const waveFiles = assignWavelengths(ms2.files,['off','290','235']);
+assert.equal(waveFiles[0].metadata.wavelength,'');
+assert.equal(waveFiles[0].metadata.condition,'Laser off');
+assert.equal(ms2.files[0].metadata.condition === 'Laser off',false);
+const waveRows = processSpectra(waveFiles,[{id:'138',targetMz:138,label:''}],0.5);
+const waveTrace = buildPlotData(waveRows,'wavelength','relative',true,paletteStyle)[0];
+assert.deepEqual(waveTrace.x,[235,290]);
+assert.deepEqual(waveTrace.y,[100,50]); // off=1000 must not be the wavelength maximum
+const waveCsv=plotRowsToCsv(waveRows,'wavelength','relative');
+assert.equal(waveCsv.split('\n').length,3);
+assert.doesNotMatch(waveCsv,/Laser off/);
+assert.match(processedRowsToCsv(waveRows),/Laser off/);
+assert.equal(buildPlotData(waveRows,'retentionTime','absolute',true,paletteStyle)[0].x.length,3);
+assert.equal(segmentSpectrum(waveFiles[0])[0].intensity,1000);
+const waveProject=createProjectSnapshot('wave',waveFiles,[],0.5,[]);
+waveProject.plotSettings={xAxis:'wavelength',xValueMultiplier:1,xUnit:'nm'};
+waveProject.plotSelectedOnly=false;
+assert.deepEqual(parseProjectSnapshot(JSON.stringify(waveProject)),waveProject);
+console.log('PASS: MS/MS detection, separate precursor/polarity channels, timestamp precision, wavelength mapping, reference exclusion, normalization, exports and project round trip.');
 
 if (process.argv[2]) {
   const folder = process.argv[2];
