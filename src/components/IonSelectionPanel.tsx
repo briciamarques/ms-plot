@@ -1,19 +1,18 @@
 import { ListPlus, Plus, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { IonTarget } from "../types";
 import { createId } from "../utils/id";
 
 type IonSelectionPanelProps = {
   ions: IonTarget[];
+  ionText: string;
+  onIonTextChange: (text: string) => void;
   tolerance: number;
   canSuggestIons: boolean;
   onIonsChange: (ions: IonTarget[]) => void;
   onToleranceChange: (tolerance: number) => void;
   onSuggestIons: (decimalPlaces: number) => void;
 };
-
-const defaultIonText =
-  "751 = parent ion\n659 = fragment 1\n617 = fragment 2\n375\n283\n255\n241 = main fragment";
 
 const parseIonText = (value: string): IonTarget[] => {
   const entries = value
@@ -36,7 +35,7 @@ const parseIonText = (value: string): IonTarget[] => {
     .filter((ion) => ion.targetMz !== "");
 };
 
-const formatIonText = (ions: IonTarget[]): string =>
+export const formatIonText = (ions: IonTarget[]): string =>
   ions
     .map((ion) =>
       ion.label.trim()
@@ -47,18 +46,15 @@ const formatIonText = (ions: IonTarget[]): string =>
 
 export function IonSelectionPanel({
   ions,
+  ionText,
+  onIonTextChange,
   tolerance,
   canSuggestIons,
   onIonsChange,
   onToleranceChange,
   onSuggestIons,
 }: IonSelectionPanelProps) {
-  const [ionText, setIonText] = useState(formatIonText(ions) || defaultIonText);
   const [suggestionDecimalPlaces, setSuggestionDecimalPlaces] = useState(-1);
-
-  useEffect(() => {
-    setIonText(formatIonText(ions));
-  }, [ions]);
 
   const updateIon = (ionId: string, patch: Partial<IonTarget>) => {
     onIonsChange(
@@ -104,10 +100,11 @@ export function IonSelectionPanel({
         <div className="ion-list-loader">
           <textarea
             value={ionText}
-            onChange={(event) => setIonText(event.target.value)}
+            onChange={(event) => onIonTextChange(event.target.value)}
             rows={8}
             aria-label="Ion list"
           />
+          {ionText !== formatIonText(ions) && <p role="status">This list has changes that are not in the plot yet. Click Load ion list to apply them. You can switch tabs without losing this draft.</p>}
           <button type="button" className="secondary-button" onClick={importList}>
             <ListPlus size={16} aria-hidden="true" />
             <span>Load ion list</span>

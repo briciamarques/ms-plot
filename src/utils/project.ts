@@ -52,6 +52,7 @@ export const parseProjectSnapshot = (content: string): ProjectSnapshot => {
         : file.warnings,
     })),
     ions: parsed.ions,
+    ...(typeof parsed.ionDraft === "string" ? { ionDraft: parsed.ionDraft } : {}),
     tolerance:
       typeof parsed.tolerance === "number" && Number.isFinite(parsed.tolerance)
         ? parsed.tolerance

@@ -1,7 +1,8 @@
 import { BrukerImport } from "./components/BrukerImport";
 import { useMemo, useState, useRef } from "react";
 import { FileUpload } from "./components/FileUpload";
-import { IonSelectionPanel } from "./components/IonSelectionPanel";
+import { IonSelectionPanel, formatIonText } from "./components/IonSelectionPanel";
+import { WorkspacePanelBoundary } from "./components/WorkspacePanelBoundary";
 import { MetadataTable } from "./components/MetadataTable";
 import { PlotBuilder } from "./components/PlotBuilder";
 import { ProjectPanel } from "./components/ProjectPanel";
@@ -66,6 +67,11 @@ function App() {
   const [files, setFiles] = useState<SpectrumFile[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [ions, setIons] = useState<IonTarget[]>(initialIons);
+  const [ionDraft, setIonDraft] = useState(() => formatIonText(initialIons));
+  const updateIons = (next: IonTarget[]) => {
+    setIons(next);
+    setIonDraft(formatIonText(next));
+  };
   const [tolerance, setTolerance] = useState(0.5);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [plotSelectedOnly, setPlotSelectedOnly] = useState(false);
@@ -234,7 +240,7 @@ function App() {
     );
 
     if (suggestedIons.length > 0) {
-      setIons(suggestedIons);
+      updateIons(suggestedIons);
     }
   };
 
@@ -248,6 +254,7 @@ function App() {
     );
     snapshot.plotSelectedOnly = plotSelectedOnly;
     snapshot.plotSettings = plotSettingsRef.current;
+    snapshot.ionDraft = ionDraft;
 
     downloadTextFile(
       safeProjectFilename(projectName),
@@ -273,6 +280,7 @@ function App() {
       setProjectName(snapshot.projectName);
       setFiles(snapshot.files);
       setIons(snapshot.ions);
+      setIonDraft(snapshot.ionDraft ?? formatIonText(snapshot.ions));
       setTolerance(snapshot.tolerance);
       setSelectedIds(restoredSelectedIds);
       setProjectStatus("Project file opened");
@@ -339,7 +347,7 @@ function App() {
               const masses = [241, 255, 751, 311, 617, 375, 163, 271, 283];
               const colors = ["#ff2626", "#555555", "#00bcc8", "#25aa63", "#d8a600", "#ad70ed", "#91514b", "#8b9e00", "#0072b2"];
               const presetIons = masses.map(mass => ({ id: createId("ion"), targetMz: String(mass), label: "" }));
-              setIons(presetIons);
+              updateIons(presetIons);
               setSelectedIds(new Set(imported.map(file => file.id)));
               setPlotSelectedOnly(true);
               setPlotInitial({ xAxis: "retentionTime", xTitle: "Time", xUnit: "min", xValueScale: "secondsToMinutes", xValueMultiplier: 1 / 60,
@@ -377,27 +385,31 @@ function App() {
         </div>
 
         <div className="workspace-tab-panel" hidden={activeWorkspaceTab !== "ions"}>
+          <WorkspacePanelBoundary name="Ions">{() =>
           <IonSelectionPanel
             ions={ions}
+            ionText={ionDraft}
+            onIonTextChange={setIonDraft}
             tolerance={tolerance}
             canSuggestIons={files.some((file) => file.peaks.length > 0)}
-            onIonsChange={setIons}
+            onIonsChange={updateIons}
             onToleranceChange={setTolerance}
             onSuggestIons={suggestIonsFromSpectra}
           />
+          }</WorkspacePanelBoundary>
         </div>
 
         <div
           className="workspace-tab-panel"
           hidden={activeWorkspaceTab !== "plot"}
         >
-          <PlotBuilder
+          <WorkspacePanelBoundary key={plotRevision} name="Plot">{retried => <PlotBuilder
             key={plotRevision}
-            initialSettings={plotInitial}
+            initialSettings={retried ? plotSettingsRef.current : plotInitial}
             settingsRef={plotSettingsRef}
             rows={plottedRows}
             isActive={activeWorkspaceTab === "plot"}
-          />
+          />}</WorkspacePanelBoundary>
         </div>
 
         <div

@@ -687,7 +687,13 @@ export const buildPlotData = (
         },
       ];
     },
-  ).map((trace, index) => ({ ...trace, legendrank: index, uid: JSON.stringify([trace.legendgroup, trace.mode]) }))
+  ).map((trace, index) => ({ ...trace, legendrank: index,
+    // Plotly inserts uid directly into CSS selectors during cleanPlot/purge.
+    // Encode UTF-16 units so punctuation in group IDs cannot break selectors,
+    // while retaining a collision-free identity across highlight reordering.
+    uid: "trace-" + JSON.stringify([trace.legendgroup, trace.mode]).split("")
+      .map(character => character.charCodeAt(0).toString(16).padStart(4, "0")).join(""),
+  }))
     // Draw the selected ion last. Stable legend ranks and trace IDs preserve
     // legend order and click identity while moving both lines and points forward.
     .sort((a, b) => Number(a.meta.ionId === highlightedIonId) - Number(b.meta.ionId === highlightedIonId));

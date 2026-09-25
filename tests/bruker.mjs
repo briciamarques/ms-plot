@@ -6,7 +6,7 @@ import ts from 'typescript';
 
 // Compile the pure processing modules with the installed compiler, without extra dependencies.
 const output = path.resolve('node_modules/.tmp/bruker-tests');
-for (const name of ['types', 'utils/id', 'utils/filenameMetadata', 'utils/bruker', 'utils/project', 'utils/processing', 'utils/csv', 'utils/plot', 'utils/format', 'utils/segmentSpectrum']) {
+for (const name of ['types', 'utils/id', 'utils/filenameMetadata', 'utils/bruker', 'utils/project', 'utils/processing', 'utils/csv', 'utils/plot', 'utils/format', 'utils/segmentSpectrum', 'utils/plotLifecycle']) {
   const result = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ES2020 },
   }).outputText.replace(/from "(\.[^"]+)"/g, 'from "$1.mjs"');
@@ -63,6 +63,8 @@ project.plotSettings = { xAxis: 'retentionTime', yMode: 'relative', xValueMultip
 project.plotSelectedOnly = true;
 const reopened = parseProjectSnapshot(JSON.stringify(project));
 assert.deepEqual(reopened, project);
+const draftProject = { ...project, ionDraft: '241\n255\nunfinished label =' };
+assert.deepEqual(parseProjectSnapshot(JSON.stringify(draftProject)), draftProject);
 fs.writeFileSync(path.join(output, 'synthetic.pdmsplot.json'), JSON.stringify(project));
 const old = JSON.parse(JSON.stringify(project)); delete old.files[0].metadata.retentionTime;
 assert.equal(parseProjectSnapshot(JSON.stringify(old)).files[0].metadata.retentionTime, '');
@@ -203,6 +205,8 @@ for (const curveMode of ['connect','movingAverage','polynomial']) {
   assert.ok(front>0);
   assert.ok(focused.slice(front).every(t=>t.meta.ionId==='ion'));
   assert.deepEqual([...focused].sort((a,b)=>a.legendrank-b.legendrank).map(t=>t.uid),normal.map(t=>t.uid));
+  assert.ok(normal.every(trace => /^trace-[0-9a-f]+$/.test(trace.uid)), 'Plotly cleanup requires CSS-safe trace IDs');
+  assert.equal(new Set(normal.map(trace => trace.uid)).size, normal.length);
   const placed=insideLegendColumns(focused,2,896,24,0.8,0.75);
   assert.equal(Object.keys(placed.legends).length,2);
   assert.ok(placed.legends.legend.x>0);
@@ -219,6 +223,40 @@ assert.deepEqual(parseProjectSnapshot(JSON.stringify(project)).plotSettings,proj
 console.log('PASS: inside/outside legends, adaptive columns, persisted settings, and ion highlighting without changing plotted values.');
 
 // Optional local validation: never copy real spectra into this repository.
+// Delay a render deliberately: superseded work must not race the latest update,
+// attach stale handlers, report stale failures, or purge while still rendering.
+const { queuePlotTask } = await load('plotLifecycle');
+let releaseRender;
+let renderStarted;
+const started = new Promise(resolve => { renderStarted = resolve; });
+const heldRender = new Promise(resolve => { releaseRender = resolve; });
+const lifecycle = [];
+const failures = [];
+const firstRender = queuePlotTask(Promise.resolve(), async isCurrent => {
+  lifecycle.push('render start'); renderStarted();
+  await heldRender;
+  lifecycle.push('render finish');
+  if (isCurrent()) lifecycle.push('stale listeners');
+}, error => failures.push(error));
+await started;
+firstRender.cancel();
+const obsoleteRender = queuePlotTask(firstRender.done, () => lifecycle.push('obsolete'), error => failures.push(error));
+obsoleteRender.cancel();
+const cleanup = queuePlotTask(obsoleteRender.done, () => { lifecycle.push('purge'); }, error => failures.push(error));
+const latestRender = queuePlotTask(cleanup.done, () => { lifecycle.push('latest'); }, error => failures.push(error));
+assert.deepEqual(lifecycle, ['render start']);
+releaseRender();
+await latestRender.done;
+assert.deepEqual(lifecycle, ['render start', 'render finish', 'purge', 'latest']);
+const syncError = new Error('sync render failure');
+const failedRender = queuePlotTask(latestRender.done, () => { throw syncError; }, error => failures.push(error));
+const rejectedRender = queuePlotTask(failedRender.done, () => Promise.reject('async render failure'), error => failures.push(error));
+const retryRender = queuePlotTask(rejectedRender.done, () => { lifecycle.push('retry'); }, error => failures.push(error));
+await retryRender.done;
+assert.deepEqual(failures, [syncError, 'async render failure']);
+assert.equal(lifecycle.at(-1), 'retry');
+console.log('PASS: serialized plot updates, cancellation, deferred cleanup, error recovery and saved ion drafts.');
+
 if (process.argv[2]) {
   const folder = process.argv[2];
   const real = parseBrukerExport(fs.readFileSync(path.join(folder, 'data.ascii'), 'utf8'), fs.readFileSync(path.join(folder, 'Segments.txt'), 'utf8'), 'Local sample.d');

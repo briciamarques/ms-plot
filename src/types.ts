@@ -92,6 +92,7 @@ export type ProjectSnapshot = {
   selectedFileIds: string[];
   plotSelectedOnly?: boolean;
   plotSettings?: Record<string, unknown>;
+  ionDraft?: string;
 };
 
 export const metadataFields: Array<{

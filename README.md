@@ -163,6 +163,19 @@ mass-alignment algorithm or a reconstruction of DataAnalysis's average spectrum.
 Intensity values use full stored numeric precision and absolute units. Older
 projects containing only averaged integer peaks require reimport for finer m/z.
 
+## Navigation and recovery
+
+Ion-list edits remain a draft until **Load ion list** is clicked. A pending-change
+message distinguishes that draft from the plotted targets. Draft text survives
+tab changes and is included in saved projects. Plot updates are serialized and
+cancel obsolete work when leaving the tab; graph cleanup waits for rendering.
+Stable trace IDs use CSS-safe characters because Plotly uses them in selectors
+when updating or removing traces. Plot and Ions errors are contained within their
+panels, with a retry action, so the project data and save controls remain available.
+For the real Plotly cleanup regression, open `/tests/browser/plot-cleanup.html`
+in the Vite dev server. It reproduces the old selector failure, then verifies
+that removing ions and purging the graph succeed with the corrected identifiers.
+
 ## Data policy
 
 Do not commit real experimental `.txt` files, unpublished research results, real plots, or real processed data. The repository ignores `.txt` files by default and only allows small fictitious files in `example-data/`.

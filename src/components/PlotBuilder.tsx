@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { LegendPosition, ProcessedRow, XAxisKey, YMode } from "../types";
 import { xAxisOptions, yModeOptions } from "../types";
 import { downloadTextFile, plotRowsToCsv } from "../utils/csv";
+import { queuePlotTask } from "../utils/plotLifecycle";
 import {
   buildPlotData,
   defaultTraceColors,
@@ -356,6 +357,9 @@ function ColorControl({
 
 export function PlotBuilder({ rows, isActive = true, initialSettings = {}, settingsRef }: PlotBuilderProps) {
   const plotRef = useRef<HTMLDivElement | null>(null);
+  const renderQueue = useRef<Promise<void>>(Promise.resolve());
+  const [plotError, setPlotError] = useState("");
+  const [renderAttempt, setRenderAttempt] = useState(0);
   const previewAreaRef = useRef<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState<PlotTab>("data");
   const [activeStyleTab, setActiveStyleTab] = useState<StyleTab>("curve");
@@ -700,7 +704,6 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
       uirevision: JSON.stringify([xAxis, yMode, xValueMultiplier, xMin, xMax, yMin, yMax, rows.length, rows[0]?.id, rows[rows.length - 1]?.id]),
     };
 
-    let cancelled = false;
     const interactive = plotElement as InteractivePlotElement;
     const selectIon = (index: number | undefined) => {
       if (index === undefined) return;
@@ -716,23 +719,33 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     const pointClick = (event: PlotInteraction) => {
       if (highlightOnClick) selectIon(event.points?.[0]?.curveNumber);
     };
-    void Plotly.react(plotElement, internalLegend?.data ?? plotData, layout, {
-      responsive: !previewExportRatio,
-      displaylogo: false,
-      modeBarButtonsToRemove: ["lasso2d", "select2d"],
-      scrollZoom: true,
-    }).then(() => {
-      if (cancelled) return;
+    let listenersAttached = false;
+    const task = queuePlotTask(renderQueue.current, async isCurrent => {
+      setPlotError("");
+      await Plotly.react(plotElement, internalLegend?.data ?? plotData, layout, {
+        responsive: !previewExportRatio,
+        displaylogo: false,
+        modeBarButtonsToRemove: ["lasso2d", "select2d"],
+        scrollZoom: true,
+      });
+      if (!isCurrent()) return;
+      listenersAttached = true;
       interactive.on("plotly_legendclick", legendClick);
       interactive.on("plotly_legenddoubleclick", legendDoubleClick);
       interactive.on("plotly_click", pointClick);
+    }, error => {
+      console.error("Plot update failed", error);
+      setPlotError(error instanceof Error ? error.message : "Could not draw the plot");
     });
+    renderQueue.current = task.done;
 
     return () => {
-      cancelled = true;
-      interactive.removeListener?.("plotly_legendclick", legendClick);
-      interactive.removeListener?.("plotly_legenddoubleclick", legendDoubleClick);
-      interactive.removeListener?.("plotly_click", pointClick);
+      task.cancel();
+      if (listenersAttached) {
+        interactive.removeListener?.("plotly_legendclick", legendClick);
+        interactive.removeListener?.("plotly_legenddoubleclick", legendDoubleClick);
+        interactive.removeListener?.("plotly_click", pointClick);
+      }
     };
   }, [
     axisColor,
@@ -742,6 +755,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     gridColor,
     hasVisibleTitle,
     isActive,
+    renderAttempt,
     legendInsideX,
     legendInsideY,
     legendPosition,
@@ -784,7 +798,12 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
 
   useEffect(() => {
     const element = plotRef.current;
-    return () => { if (element) Plotly.purge(element); };
+    return () => {
+      if (!element) return;
+      // Wait for any in-flight render before destroying its graph resources.
+      renderQueue.current = queuePlotTask(renderQueue.current, () => Plotly.purge(element),
+        error => console.error("Plot cleanup failed", error)).done;
+    };
   }, []);
 
   const applyPaperStyle = () => {
@@ -2139,6 +2158,11 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
         </aside>
 
         <div className="plot-preview-pane">
+          {plotError && <div className="bruker-warning" role="alert">
+            <p>The plot could not be updated. Your data and ion list are still available; you can switch tabs or save the project.</p>
+            <button type="button" className="secondary-button" onClick={() => setRenderAttempt(value => value + 1)}>Retry plot</button>
+            <details><summary>Error details</summary>{plotError}</details>
+          </div>}
           <div className="plot-preview-area" ref={previewAreaRef}>
             <div
               className={
