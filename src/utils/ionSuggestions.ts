@@ -77,6 +77,7 @@ const mostCommonParentIon = (files: SpectrumFile[]): number | null => {
 };
 
 const formatSuggestedMz = (targetMz: number, decimalPlaces: number): string => {
+  if (decimalPlaces < 0) return String(targetMz);
   const safeDecimalPlaces = Math.min(Math.max(decimalPlaces, 0), 4);
 
   return safeDecimalPlaces === 0
@@ -98,7 +99,7 @@ export const suggestIonTargets = (
   files: SpectrumFile[],
   tolerance: number,
   fragmentCount = 6,
-  decimalPlaces = 0,
+  decimalPlaces = -1,
 ): IonTarget[] => {
   const clusters = clusterPeaks(files, tolerance);
   if (clusters.length === 0) {

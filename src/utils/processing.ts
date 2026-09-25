@@ -64,6 +64,23 @@ export const normalizeIntensities = (
   });
 };
 
+export const extractBrukerIntensity = (
+  peaks: Peak[], targetMz: number, tolerance: number,
+): ExtractedIonIntensity => {
+  let count = 0;
+  let intensitySum = 0;
+  let mzSum = 0;
+  for (const peak of peaks) {
+    if (Math.abs(peak.mz - targetMz) <= Math.max(0, tolerance)) {
+      count++;
+      intensitySum += peak.intensity;
+      mzSum += peak.mz;
+    }
+  }
+  return count ? { foundMz: mzSum / count, intensity: intensitySum / count, warning: "" }
+    : { foundMz: null, intensity: 0, warning: "Peak not found" };
+};
+
 export const processSpectra = (
   files: SpectrumFile[],
   ions: NumericIonTarget[],
@@ -71,9 +88,11 @@ export const processSpectra = (
 ): ProcessedRow[] => {
   const rows = files.flatMap((file) =>
     ions.map((ion) => {
-      const extraction = extractIonIntensity(file.peaks, ion.targetMz, tolerance);
+      const extraction = file.bruker?.method === "exact-mz-window-observed-mean"
+        ? extractBrukerIntensity(file.peaks, ion.targetMz, tolerance)
+        : extractIonIntensity(file.peaks, ion.targetMz, tolerance);
       const fileWarning = file.peaks.length === 0 ? "File has no valid data" : "";
-      const warning = extraction.warning || fileWarning;
+      const warning = [fileWarning || extraction.warning, ...file.warnings].filter(Boolean).join("; ");
 
       return {
         id: `${file.id}-${ion.id}`,

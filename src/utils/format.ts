@@ -3,7 +3,7 @@ export const formatMz = (value: number | null): string => {
     return "";
   }
 
-  return Number.isInteger(value) ? value.toString() : value.toFixed(4);
+  return value.toString();
 };
 
 export const formatIntensity = (value: number): string => {
@@ -11,9 +11,7 @@ export const formatIntensity = (value: number): string => {
     return "0";
   }
 
-  return value.toLocaleString(undefined, {
-    maximumFractionDigits: 2,
-  });
+  return value.toString();
 };
 
 export const formatPercent = (value: number): string => {

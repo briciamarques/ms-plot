@@ -1,4 +1,5 @@
 import type { IonTarget, ProjectSnapshot, SpectrumFile } from "../types";
+import { emptyMetadata } from "../types";
 
 export const createProjectSnapshot = (
   projectName: string,
@@ -44,7 +45,12 @@ export const parseProjectSnapshot = (content: string): ProjectSnapshot => {
     version: 1,
     savedAt: String(parsed.savedAt ?? ""),
     projectName: String(parsed.projectName ?? "pd-ms-project"),
-    files: parsed.files,
+    files: parsed.files.map(file => ({
+      ...file, metadata: { ...emptyMetadata(), ...file.metadata },
+      warnings: file.bruker?.method === "nominal-mz-observed-mean"
+        ? [...new Set([...file.warnings, "Legacy Bruker import: m/z was rounded to integers. Reimport the original exports to retain decimals."])]
+        : file.warnings,
+    })),
     ions: parsed.ions,
     tolerance:
       typeof parsed.tolerance === "number" && Number.isFinite(parsed.tolerance)
@@ -53,5 +59,8 @@ export const parseProjectSnapshot = (content: string): ProjectSnapshot => {
     selectedFileIds: Array.isArray(parsed.selectedFileIds)
       ? parsed.selectedFileIds.map(String)
       : [],
+    plotSelectedOnly: parsed.plotSelectedOnly === true,
+    plotSettings: parsed.plotSettings && typeof parsed.plotSettings === "object" && !Array.isArray(parsed.plotSettings)
+      ? parsed.plotSettings : {},
   };
 };

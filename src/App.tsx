@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { BrukerImport } from "./components/BrukerImport";
+import { useMemo, useState, useRef } from "react";
 import { FileUpload } from "./components/FileUpload";
 import { IonSelectionPanel } from "./components/IonSelectionPanel";
 import { MetadataTable } from "./components/MetadataTable";
@@ -27,10 +28,11 @@ import {
 } from "./utils/filenameMetadata";
 import { suggestIonTargets } from "./utils/ionSuggestions";
 
-type WorkspaceTab = "files" | "ions" | "plot" | "data";
+type WorkspaceTab = "files" | "bruker" | "ions" | "plot" | "data";
 
 const workspaceTabs: Array<{ key: WorkspaceTab; label: string }> = [
   { key: "files", label: "Files & metadata" },
+  { key: "bruker", label: "Bruker files" },
   { key: "ions", label: "Ions" },
   { key: "plot", label: "Plot" },
   { key: "data", label: "Data" },
@@ -56,6 +58,9 @@ const readFile = (file: File): Promise<string> =>
   });
 
 function App() {
+  const plotSettingsRef = useRef<Record<string, unknown>>({});
+  const [plotInitial, setPlotInitial] = useState<Record<string, unknown>>({});
+  const [plotRevision, setPlotRevision] = useState(0);
   const [files, setFiles] = useState<SpectrumFile[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [ions, setIons] = useState<IonTarget[]>(initialIons);
@@ -239,6 +244,8 @@ function App() {
       tolerance,
       Array.from(selectedIds),
     );
+    snapshot.plotSelectedOnly = plotSelectedOnly;
+    snapshot.plotSettings = plotSettingsRef.current;
 
     downloadTextFile(
       safeProjectFilename(projectName),
@@ -258,6 +265,9 @@ function App() {
         ),
       );
 
+      setPlotSelectedOnly(snapshot.plotSelectedOnly ?? false);
+      setPlotInitial(snapshot.plotSettings ?? {});
+      setPlotRevision(value => value + 1);
       setProjectName(snapshot.projectName);
       setFiles(snapshot.files);
       setIons(snapshot.ions);
@@ -311,10 +321,6 @@ function App() {
       </nav>
 
       <main className="app-main">
-        <div
-          className="workspace-tab-panel"
-          hidden={activeWorkspaceTab !== "files"}
-        >
           <ProjectPanel
             projectName={projectName}
             status={projectStatus}
@@ -322,6 +328,21 @@ function App() {
             onSaveProject={saveProject}
             onLoadProject={loadProject}
           />
+
+        <div className="workspace-tab-panel" hidden={activeWorkspaceTab !== "bruker"}>
+          <BrukerImport onImport={imported => {
+            setFiles(current => [...current, ...imported]);
+            setSelectedIds(current => new Set([...current, ...imported.map(file => file.id)]));
+            if (files.length === 0) {
+              setPlotInitial({ xAxis: "retentionTime", xTitle: "Acquisition time", xUnit: "s" });
+              setPlotRevision(value => value + 1);
+            }
+          }} />
+        </div>
+        <div
+          className="workspace-tab-panel"
+          hidden={activeWorkspaceTab !== "files"}
+        >
           <FileUpload
             onFilesSelected={handleFilesSelected}
             isLoading={isLoadingFiles}
@@ -356,6 +377,9 @@ function App() {
           hidden={activeWorkspaceTab !== "plot"}
         >
           <PlotBuilder
+            key={plotRevision}
+            initialSettings={plotInitial}
+            settingsRef={plotSettingsRef}
             rows={plottedRows}
             isActive={activeWorkspaceTab === "plot"}
           />

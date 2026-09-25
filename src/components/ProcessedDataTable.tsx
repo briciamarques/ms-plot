@@ -32,6 +32,10 @@ export function ProcessedDataTable({ rows }: ProcessedDataTableProps) {
           <Download size={16} aria-hidden="true" />
           <span>Export CSV</span>
         </button>
+        <button type="button" className="secondary-button" disabled={!rows.length}
+          onClick={() => downloadTextFile("pd-ms-processed-data.txt", processedRowsToCsv(rows, "\t"), "text/plain;charset=utf-8")}>
+          Export TXT
+        </button>
       </div>
 
       <div className="table-shell processed-table-shell">
@@ -53,12 +57,14 @@ export function ProcessedDataTable({ rows }: ProcessedDataTableProps) {
               <th>Absolute intensity</th>
               <th>Relative intensity</th>
               <th>Warning</th>
+              <th>Acquisition time (s)</th>
+              <th>Segment</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={15} className="empty-cell">
+                <td colSpan={17} className="empty-cell">
                   No processed rows
                 </td>
               </tr>
@@ -90,6 +96,8 @@ export function ProcessedDataTable({ rows }: ProcessedDataTableProps) {
                       ""
                     )}
                   </td>
+                  <td>{row.metadata.retentionTime}</td>
+                  <td>{row.metadata.segment}</td>
                 </tr>
               ))
             )}

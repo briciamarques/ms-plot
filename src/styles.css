@@ -134,7 +134,7 @@ button {
 .app-main {
   display: grid;
   gap: 12px;
-  padding: 12px clamp(14px, 3vw, 40px) 16px;
+  padding: 0 clamp(14px, 3vw, 40px) 16px;
   min-width: 0;
 }
 
@@ -1039,3 +1039,8 @@ label:has(input:disabled) {
     width: 100%;
   }
 }
+.bruker-actions { display: flex; flex-wrap: wrap; gap: 16px; margin: 20px 0; }
+.bruker-actions > label { display: flex; flex-direction: column; gap: 8px; }
+.bruker-help { color: #64748b; }
+.bruker-warning { padding: 16px; border: 1px solid #c0841a; border-radius: 8px; background: #fffbeb; color: #713f12; margin: 16px 0; }
+.bruker-preview { max-height: 360px; overflow: auto; margin-bottom: 20px; }

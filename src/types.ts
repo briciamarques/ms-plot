@@ -13,6 +13,8 @@ export type SpectrumMetadata = {
   wavelength: string;
   replicate: string;
   notes: string;
+  retentionTime: string;
+  segment: string;
 };
 
 export type MetadataField = keyof SpectrumMetadata;
@@ -25,6 +27,14 @@ export type SpectrumFile = {
   validLineCount: number;
   invalidLineCount: number;
   warnings: string[];
+  bruker?: {
+    source: string;
+    segment: number;
+    startSeconds: number;
+    endSeconds: number;
+    scanCount: number;
+    method: "nominal-mz-observed-mean" | "exact-mz-window-observed-mean";
+  };
 };
 
 export type IonTarget = {
@@ -54,6 +64,8 @@ export type ProcessedRow = {
 };
 
 export type XAxisKey =
+  | "retentionTime"
+  | "segment"
   | "acqTime"
   | "activationTime"
   | "ledPower"
@@ -73,6 +85,8 @@ export type ProjectSnapshot = {
   ions: IonTarget[];
   tolerance: number;
   selectedFileIds: string[];
+  plotSelectedOnly?: boolean;
+  plotSettings?: Record<string, unknown>;
 };
 
 export const metadataFields: Array<{
@@ -80,6 +94,8 @@ export const metadataFields: Array<{
   label: string;
   placeholder?: string;
 }> = [
+  { key: "retentionTime", label: "Acquisition time (s)", placeholder: "Segment midpoint" },
+  { key: "segment", label: "Segment" },
   { key: "compound", label: "Compound", placeholder: "riboflavin" },
   { key: "parentIon", label: "Parent ion", placeholder: "457" },
   { key: "condition", label: "Condition", placeholder: "LED on" },
@@ -92,6 +108,8 @@ export const metadataFields: Array<{
 ];
 
 export const xAxisOptions: Array<{ key: XAxisKey; label: string }> = [
+  { key: "retentionTime", label: "Acquisition time" },
+  { key: "segment", label: "Segment" },
   { key: "acqTime", label: "Act. Time" },
   { key: "activationTime", label: "Activation time" },
   { key: "ledPower", label: "LED power" },
@@ -105,6 +123,8 @@ export const yModeOptions: Array<{ key: YMode; label: string }> = [
 ];
 
 export const emptyMetadata = (): SpectrumMetadata => ({
+  retentionTime: "",
+  segment: "",
   compound: "",
   parentIon: "",
   condition: "",

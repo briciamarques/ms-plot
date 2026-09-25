@@ -54,7 +54,7 @@ export function IonSelectionPanel({
   onSuggestIons,
 }: IonSelectionPanelProps) {
   const [ionText, setIonText] = useState(formatIonText(ions) || defaultIonText);
-  const [suggestionDecimalPlaces, setSuggestionDecimalPlaces] = useState(0);
+  const [suggestionDecimalPlaces, setSuggestionDecimalPlaces] = useState(-1);
 
   useEffect(() => {
     setIonText(formatIonText(ions));
@@ -93,7 +93,7 @@ export function IonSelectionPanel({
           <input
             type="number"
             min="0"
-            step="0.01"
+            step="any"
             value={tolerance}
             onChange={(event) => onToleranceChange(Number(event.target.value))}
           />
@@ -129,6 +129,7 @@ export function IonSelectionPanel({
                 setSuggestionDecimalPlaces(Number(event.target.value))
               }
             >
+              <option value={-1}>Original precision</option>
               <option value={0}>0</option>
               <option value={1}>1</option>
               <option value={2}>2</option>

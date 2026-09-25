@@ -11,9 +11,19 @@ import {
   traceName,
 } from "../utils/plot";
 
+function readPlotSetting<T>(settings: Record<string, unknown>, key: string, fallback: T): T {
+  const value = settings[key];
+  if (value === undefined || value === null || typeof value !== typeof fallback) return fallback;
+  if (typeof value === "number" && !Number.isFinite(value)) return fallback;
+  if (key === "xAxis" && !xAxisOptions.some(option => option.key === value)) return fallback;
+  return value as T;
+}
+
 type PlotBuilderProps = {
   rows: ProcessedRow[];
   isActive?: boolean;
+  initialSettings?: Record<string, unknown>;
+  settingsRef: { current: Record<string, unknown> };
 };
 
 type PlotTab = "data" | "style";
@@ -174,6 +184,7 @@ const axisLabel = (axis: XAxisKey): string =>
   xAxisOptions.find((option) => option.key === axis)?.label ?? "x";
 
 const defaultXAxisUnit = (axis: XAxisKey): string => {
+  if (axis === "retentionTime") return "s";
   if (axis === "acqTime" || axis === "activationTime") {
     return "ms";
   }
@@ -331,61 +342,61 @@ function ColorControl({
   );
 }
 
-export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
+export function PlotBuilder({ rows, isActive = true, initialSettings = {}, settingsRef }: PlotBuilderProps) {
   const plotRef = useRef<HTMLDivElement | null>(null);
   const previewAreaRef = useRef<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState<PlotTab>("data");
   const [activeStyleTab, setActiveStyleTab] = useState<StyleTab>("curve");
-  const [xAxis, setXAxis] = useState<XAxisKey>("acqTime");
-  const [yMode, setYMode] = useState<YMode>("absolute");
-  const [title, setTitle] = useState("Ion intensity plot");
-  const [showTitle, setShowTitle] = useState(true);
-  const [xTitle, setXTitle] = useState(axisLabel("acqTime"));
-  const [xUnit, setXUnit] = useState("ms");
-  const [yTitle, setYTitle] = useState("Absolute intensity");
-  const [yUnit, setYUnit] = useState("");
-  const [xValueScale, setXValueScale] = useState<XValueScale>("raw");
-  const [xValueMultiplier, setXValueMultiplier] = useState(1);
-  const [xTickFormat, setXTickFormat] = useState<TickFormat>("auto");
-  const [yTickFormat, setYTickFormat] = useState<TickFormat>("auto");
-  const [xMin, setXMin] = useState("");
-  const [xMax, setXMax] = useState("");
-  const [yMin, setYMin] = useState("");
-  const [yMax, setYMax] = useState("");
-  const [showLegend, setShowLegend] = useState(true);
-  const [legendPosition, setLegendPosition] = useState<LegendPosition>("right");
-  const [legendInsideX, setLegendInsideX] = useState(0.98);
-  const [legendInsideY, setLegendInsideY] = useState(0.98);
-  const [forceSingleLegend, setForceSingleLegend] = useState(true);
-  const [xZoomOnly, setXZoomOnly] = useState(true);
-  const [fontFamily, setFontFamily] = useState<PlotFont>("Arial");
-  const [titleSize, setTitleSize] = useState(20);
-  const [axisTitleSize, setAxisTitleSize] = useState(18);
-  const [tickSize, setTickSize] = useState(15);
-  const [legendSize, setLegendSize] = useState(14);
-  const [showGrid, setShowGrid] = useState(false);
-  const [showAxisBox, setShowAxisBox] = useState(true);
-  const [axisLineWidth, setAxisLineWidth] = useState(2);
-  const [lineWidth, setLineWidth] = useState(2.8);
-  const [markerSize, setMarkerSize] = useState(5);
-  const [lineShape, setLineShape] = useState<LineShape>("linear");
-  const [curveMode, setCurveMode] = useState<CurveMode>("connect");
-  const [polynomialDegree, setPolynomialDegree] = useState(3);
-  const [previewExportRatio, setPreviewExportRatio] = useState(true);
-  const [plotHeight, setPlotHeight] = useState(640);
-  const [exportWidth, setExportWidth] = useState(1000);
-  const [exportHeight, setExportHeight] = useState(760);
+  const [xAxis, setXAxis] = useState<XAxisKey>(() => readPlotSetting(initialSettings, "xAxis", "acqTime"));
+  const [yMode, setYMode] = useState<YMode>(() => readPlotSetting(initialSettings, "yMode", "absolute"));
+  const [title, setTitle] = useState(() => readPlotSetting(initialSettings, "title", "Ion intensity plot"));
+  const [showTitle, setShowTitle] = useState(() => readPlotSetting(initialSettings, "showTitle", true));
+  const [xTitle, setXTitle] = useState(() => readPlotSetting(initialSettings, "xTitle", axisLabel("acqTime")));
+  const [xUnit, setXUnit] = useState(() => readPlotSetting(initialSettings, "xUnit", "ms"));
+  const [yTitle, setYTitle] = useState(() => readPlotSetting(initialSettings, "yTitle", yMode === "absolute" ? "Absolute intensity" : "Relative intensity"));
+  const [yUnit, setYUnit] = useState(() => readPlotSetting(initialSettings, "yUnit", yMode === "relative" ? "%" : ""));
+  const [xValueScale, setXValueScale] = useState<XValueScale>(() => readPlotSetting(initialSettings, "xValueScale", "raw"));
+  const [xValueMultiplier, setXValueMultiplier] = useState(() => readPlotSetting(initialSettings, "xValueMultiplier", 1));
+  const [xTickFormat, setXTickFormat] = useState<TickFormat>(() => readPlotSetting(initialSettings, "xTickFormat", "auto"));
+  const [yTickFormat, setYTickFormat] = useState<TickFormat>(() => readPlotSetting(initialSettings, "yTickFormat", "auto"));
+  const [xMin, setXMin] = useState(() => readPlotSetting(initialSettings, "xMin", ""));
+  const [xMax, setXMax] = useState(() => readPlotSetting(initialSettings, "xMax", ""));
+  const [yMin, setYMin] = useState(() => readPlotSetting(initialSettings, "yMin", ""));
+  const [yMax, setYMax] = useState(() => readPlotSetting(initialSettings, "yMax", ""));
+  const [showLegend, setShowLegend] = useState(() => readPlotSetting(initialSettings, "showLegend", true));
+  const [legendPosition, setLegendPosition] = useState<LegendPosition>(() => readPlotSetting(initialSettings, "legendPosition", "right"));
+  const [legendInsideX, setLegendInsideX] = useState(() => readPlotSetting(initialSettings, "legendInsideX", 0.98));
+  const [legendInsideY, setLegendInsideY] = useState(() => readPlotSetting(initialSettings, "legendInsideY", 0.98));
+  const [forceSingleLegend, setForceSingleLegend] = useState(() => readPlotSetting(initialSettings, "forceSingleLegend", true));
+  const [xZoomOnly, setXZoomOnly] = useState(() => readPlotSetting(initialSettings, "xZoomOnly", true));
+  const [fontFamily, setFontFamily] = useState<PlotFont>(() => readPlotSetting(initialSettings, "fontFamily", "Arial"));
+  const [titleSize, setTitleSize] = useState(() => readPlotSetting(initialSettings, "titleSize", 20));
+  const [axisTitleSize, setAxisTitleSize] = useState(() => readPlotSetting(initialSettings, "axisTitleSize", 18));
+  const [tickSize, setTickSize] = useState(() => readPlotSetting(initialSettings, "tickSize", 15));
+  const [legendSize, setLegendSize] = useState(() => readPlotSetting(initialSettings, "legendSize", 14));
+  const [showGrid, setShowGrid] = useState(() => readPlotSetting(initialSettings, "showGrid", false));
+  const [showAxisBox, setShowAxisBox] = useState(() => readPlotSetting(initialSettings, "showAxisBox", true));
+  const [axisLineWidth, setAxisLineWidth] = useState(() => readPlotSetting(initialSettings, "axisLineWidth", 2));
+  const [lineWidth, setLineWidth] = useState(() => readPlotSetting(initialSettings, "lineWidth", 2.8));
+  const [markerSize, setMarkerSize] = useState(() => readPlotSetting(initialSettings, "markerSize", 5));
+  const [lineShape, setLineShape] = useState<LineShape>(() => readPlotSetting(initialSettings, "lineShape", "linear"));
+  const [curveMode, setCurveMode] = useState<CurveMode>(() => readPlotSetting(initialSettings, "curveMode", "connect"));
+  const [polynomialDegree, setPolynomialDegree] = useState(() => readPlotSetting(initialSettings, "polynomialDegree", 3));
+  const [previewExportRatio, setPreviewExportRatio] = useState(() => readPlotSetting(initialSettings, "previewExportRatio", true));
+  const [plotHeight, setPlotHeight] = useState(() => readPlotSetting(initialSettings, "plotHeight", 640));
+  const [exportWidth, setExportWidth] = useState(() => readPlotSetting(initialSettings, "exportWidth", 1000));
+  const [exportHeight, setExportHeight] = useState(() => readPlotSetting(initialSettings, "exportHeight", 760));
   const [journalPreset, setJournalPreset] =
-    useState<JournalPresetKey>("jasms-single");
-  const [figureContent, setFigureContent] = useState<FigureContent>("color");
-  const [rasterDpi, setRasterDpi] = useState<RasterDpi>(300);
-  const [finalWidthMm, setFinalWidthMm] = useState(84.6);
-  const [journalStatus, setJournalStatus] = useState("");
-  const [axisColor, setAxisColor] = useState("#111111");
-  const [gridColor, setGridColor] = useState("#d7d7d7");
-  const [plotBackground, setPlotBackground] = useState("#ffffff");
-  const [paperBackground, setPaperBackground] = useState("#ffffff");
-  const [traceColors, setTraceColors] = useState<Record<string, string>>({});
+    useState<JournalPresetKey>(() => readPlotSetting(initialSettings, "journalPreset", "jasms-single"));
+  const [figureContent, setFigureContent] = useState<FigureContent>(() => readPlotSetting(initialSettings, "figureContent", "color"));
+  const [rasterDpi, setRasterDpi] = useState<RasterDpi>(() => readPlotSetting(initialSettings, "rasterDpi", 300));
+  const [finalWidthMm, setFinalWidthMm] = useState(() => readPlotSetting(initialSettings, "finalWidthMm", 84.6));
+  const [journalStatus, setJournalStatus] = useState(() => readPlotSetting(initialSettings, "journalStatus", ""));
+  const [axisColor, setAxisColor] = useState(() => readPlotSetting(initialSettings, "axisColor", "#111111"));
+  const [gridColor, setGridColor] = useState(() => readPlotSetting(initialSettings, "gridColor", "#d7d7d7"));
+  const [plotBackground, setPlotBackground] = useState(() => readPlotSetting(initialSettings, "plotBackground", "#ffffff"));
+  const [paperBackground, setPaperBackground] = useState(() => readPlotSetting(initialSettings, "paperBackground", "#ffffff"));
+  const [traceColors, setTraceColors] = useState<Record<string, string>>(() => readPlotSetting(initialSettings, "traceColors", {}));
   const [savedPlotStyles, setSavedPlotStyles] =
     useState<SavedPlotStyle[]>(loadSavedPlotStyles);
   const [stylePresetName, setStylePresetName] = useState("");
@@ -393,6 +404,8 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
   const [stylePresetStatus, setStylePresetStatus] = useState("");
   const [previewAreaWidth, setPreviewAreaWidth] = useState(0);
   const [previewAreaHeight, setPreviewAreaHeight] = useState(0);
+
+  useEffect(() => { settingsRef.current = { xAxis, yMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors }; });
 
   const shouldShowLegend =
     showLegend && (forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
@@ -521,11 +534,6 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
 
     return boundsFromValues(values);
   }, [rows, yMode]);
-
-  useEffect(() => {
-    setYTitle(yMode === "absolute" ? "Absolute intensity" : "Relative intensity");
-    setYUnit(yMode === "relative" ? "%" : "");
-  }, [yMode]);
 
   useEffect(() => {
     try {
@@ -1097,21 +1105,22 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
     });
   };
 
-  const exportPlotCsv = () => {
+  const exportPlotCsv = (format: "csv" | "txt" = "csv") => {
     if (rows.length === 0) {
       return;
     }
 
     downloadTextFile(
-      "pd-ms-plot-data.csv",
+      `pd-ms-plot-data.${format}`,
       plotRowsToCsv(
         rows,
         xAxis,
         yMode,
         xValueMultiplier,
         axisTitleWithUnit(xTitle, xUnit),
+        format === "txt" ? "\t" : ",",
       ),
-      "text/csv;charset=utf-8",
+      format === "txt" ? "text/plain;charset=utf-8" : "text/csv;charset=utf-8",
     );
   };
 
@@ -1126,12 +1135,13 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
           <button
             type="button"
             className="secondary-button"
-            onClick={exportPlotCsv}
+            onClick={() => exportPlotCsv()}
             disabled={rows.length === 0}
           >
             <Download size={16} aria-hidden="true" />
             <span>Export plot CSV</span>
           </button>
+          <button type="button" className="secondary-button" onClick={() => exportPlotCsv("txt")} disabled={rows.length === 0}>Export plot TXT</button>
           <button
             type="button"
             className="secondary-button"
@@ -1188,7 +1198,12 @@ export function PlotBuilder({ rows, isActive = true }: PlotBuilderProps) {
                   <span>y axis</span>
                   <select
                     value={yMode}
-                    onChange={(event) => setYMode(event.target.value as YMode)}
+                    onChange={(event) => {
+                      const mode = event.target.value as YMode;
+                      setYMode(mode);
+                      setYTitle(mode === "absolute" ? "Absolute intensity" : "Relative intensity");
+                      setYUnit(mode === "relative" ? "%" : "");
+                    }}
                   >
                     {yModeOptions.map((option) => (
                       <option key={option.key} value={option.key}>

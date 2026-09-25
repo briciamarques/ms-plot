@@ -1,4 +1,5 @@
 node_modules/
+Bruker-method/
 dist/
 .pnpm-store/
 .agents/

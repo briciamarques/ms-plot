@@ -4,14 +4,14 @@ import { xAxisOptions, yModeOptions } from "../types";
 const escapeCsvValue = (value: string | number | null): string => {
   const stringValue = value === null ? "" : String(value);
 
-  if (/[",\n\r]/.test(stringValue)) {
+  if (/[",\t\n\r]/.test(stringValue)) {
     return `"${stringValue.replace(/"/g, '""')}"`;
   }
 
   return stringValue;
 };
 
-export const processedRowsToCsv = (rows: ProcessedRow[]): string => {
+export const processedRowsToCsv = (rows: ProcessedRow[], delimiter = ","): string => {
   const headers = [
     "filename",
     "compound",
@@ -28,6 +28,7 @@ export const processedRowsToCsv = (rows: ProcessedRow[]): string => {
     "absolute intensity",
     "relative intensity",
     "warning",
+    "acquisition time midpoint (s)", "segment", "notes",
   ];
 
   const csvRows = rows.map((row) => [
@@ -46,10 +47,11 @@ export const processedRowsToCsv = (rows: ProcessedRow[]): string => {
     row.absoluteIntensity,
     row.relativeIntensity,
     row.warning,
+    row.metadata.retentionTime, row.metadata.segment, row.metadata.notes,
   ]);
 
   return [headers, ...csvRows]
-    .map((csvRow) => csvRow.map(escapeCsvValue).join(","))
+    .map((csvRow) => csvRow.map(escapeCsvValue).join(delimiter))
     .join("\n");
 };
 
@@ -88,6 +90,7 @@ export const plotRowsToCsv = (
   yMode: YMode,
   xValueMultiplier = 1,
   xAxisDisplayLabel?: string,
+  delimiter = ",",
 ): string => {
   const headers = [
     "plot x axis",
@@ -109,11 +112,12 @@ export const plotRowsToCsv = (
     "absolute intensity",
     "relative intensity",
     "warning",
+    "acquisition time midpoint (s)", "segment", "notes",
   ];
 
   const csvRows = rows.map((row) => [
     xAxisDisplayLabel ?? axisLabel(xAxis),
-    plotAxisValue(row.metadata[xAxis], xValueMultiplier),
+    plotAxisValue(row.metadata[xAxis] ?? "", xValueMultiplier),
     yModeLabel(yMode),
     yMode === "absolute" ? row.absoluteIntensity : row.relativeIntensity,
     row.filename,
@@ -131,10 +135,11 @@ export const plotRowsToCsv = (
     row.absoluteIntensity,
     row.relativeIntensity,
     row.warning,
+    row.metadata.retentionTime, row.metadata.segment, row.metadata.notes,
   ]);
 
   return [headers, ...csvRows]
-    .map((csvRow) => csvRow.map(escapeCsvValue).join(","))
+    .map((csvRow) => csvRow.map(escapeCsvValue).join(delimiter))
     .join("\n");
 };
 
@@ -149,7 +154,9 @@ export const downloadTextFile = (
 
   link.href = url;
   link.download = filename;
+  document.body.appendChild(link);
   link.click();
-
-  URL.revokeObjectURL(url);
+  link.remove();
+  // Let the browser consume the download before releasing its backing data.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
