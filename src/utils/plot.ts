@@ -1,11 +1,23 @@
 import { plotYValue } from "../types";
 import type { LegendPosition, ProcessedRow, XAxisKey, YMode } from "../types";
 import { formatMz } from "./format";
+import { paletteColor, trmsColors, type ColorPaletteId } from "./colorPalettes";
 
 export const defaultPlotAppearance = {
   fontFamily: "Arial" as const, showTitle: false, titleSize: 28, axisTitleSize: 28,
   tickSize: 24, legendSize: 24, lineWidth: 2.5, markerSize: 7,
   exportWidth: 1000, exportHeight: 800, legendPosition: "insideTop" as const, legendColumns: 0,
+};
+
+export const trmsPlotDefaults = {
+  ...defaultPlotAppearance,
+  xAxis: "retentionTime" as const, xTitle: "Time", xUnit: "min",
+  xValueScale: "secondsToMinutes" as const, xValueMultiplier: 1 / 60,
+  yMode: "selectedSum" as const, yTitle: "Relative Intensity", yUnit: "%",
+  xMin: "0", yMin: "0", xMax: "", yMax: "",
+  curveMode: "movingAverage" as const, movingAverageWindow: 3, lineShape: "linear" as const,
+  legendColumns: 1, legendInsideX: 0.02, legendInsideY: 0.98,
+  forceSingleLegend: true, highlightOnClick: false, colorPalette: "trms" as const,
 };
 
 export type PlotTrace = {
@@ -28,6 +40,7 @@ export type PlotTrace = {
 
 export type TraceStyleOptions = {
   colors: Record<string, string>;
+  colorPalette?: ColorPaletteId;
   lineWidth: number;
   markerSize: number;
   lineShape: "linear" | "spline";
@@ -43,27 +56,7 @@ export type TraceStyleOptions = {
   highlightedIonId?: string;
 };
 
-export const defaultTraceColors = [
-  "#000000",
-  "#8a008a",
-  "#0066cc",
-  "#d7191c",
-  "#1a9641",
-  "#7b2ff7",
-  "#a6761d",
-  "#00a6a6",
-];
-
-const fallbackColors = [
-  "#0f766e",
-  "#b45309",
-  "#2563eb",
-  "#be123c",
-  "#7c3aed",
-  "#15803d",
-  "#c2410c",
-  "#0e7490",
-];
+export const defaultTraceColors = trmsColors;
 
 const getAxisRawValue = (row: ProcessedRow, axis: XAxisKey): string =>
   row.metadata[axis] ?? "";
@@ -588,17 +581,17 @@ export const buildPlotData = (
   xValueMultiplier = 1,
 ): PlotTrace[] => {
   const rowsByIon = groupRows(rows);
+  const ionIndexes = new Map([...new Set(rows.map(row => row.ionId))].map((id, index) => [id, index]));
   const highlightedIonId = rows.some(row => row.ionId === style.highlightedIonId) ? style.highlightedIonId : undefined;
 
   return Array.from(rowsByIon.entries()).flatMap<PlotTrace>(
-    ([groupId, ionRows], index): PlotTrace[] => {
+    ([groupId, ionRows]): PlotTrace[] => {
       const sortedRows = sortRowsByAxis(ionRows, axis);
       const firstRow = sortedRows[0];
       const color =
         highlightedIonId && firstRow.ionId !== highlightedIonId ? "#b8b8b8" :
         style.colors[firstRow.ionId] ??
-        defaultTraceColors[index % defaultTraceColors.length] ??
-        fallbackColors[index % fallbackColors.length];
+        paletteColor(style.colorPalette ?? "trms", firstRow.targetMz, ionIndexes.get(firstRow.ionId) ?? 0);
       const xValues = sortedRows.map((row) =>
         getPlotXValue(getAxisRawValue(row, axis), xValueMultiplier),
       );

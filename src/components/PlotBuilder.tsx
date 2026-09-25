@@ -8,12 +8,13 @@ import { queuePlotTask } from "../utils/plotLifecycle";
 import { axisRange, axisRangeLayout, numericBounds } from "../utils/axisRange";
 import {
   buildPlotData,
-  defaultTraceColors,
   legendGeometry,
   insideLegendColumns,
   defaultPlotAppearance,
+  trmsPlotDefaults,
   traceName,
 } from "../utils/plot";
+import { colorPalettes, paletteColor, readColorPalette, type ColorPaletteId } from "../utils/colorPalettes";
 
 function readPlotSetting<T>(settings: Record<string, unknown>, key: string, fallback: T): T {
   const value = settings[key];
@@ -98,6 +99,7 @@ type PlotStyleSettings = {
   plotBackground: string;
   paperBackground: string;
   tracePalette: string[];
+  colorPalette?: ColorPaletteId;
 };
 
 type SavedPlotStyle = {
@@ -355,6 +357,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   const [plotBackground, setPlotBackground] = useState(() => readPlotSetting(initialSettings, "plotBackground", "#ffffff"));
   const [paperBackground, setPaperBackground] = useState(() => readPlotSetting(initialSettings, "paperBackground", "#ffffff"));
   const [traceColors, setTraceColors] = useState<Record<string, string>>(() => readPlotSetting(initialSettings, "traceColors", {}));
+  const [colorPalette, setColorPalette] = useState<ColorPaletteId>(() => readColorPalette(initialSettings.colorPalette));
   const [savedPlotStyles, setSavedPlotStyles] =
     useState<SavedPlotStyle[]>(loadSavedPlotStyles);
   const [stylePresetName, setStylePresetName] = useState("");
@@ -363,7 +366,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   const [previewAreaWidth, setPreviewAreaWidth] = useState(0);
   const [previewAreaHeight, setPreviewAreaHeight] = useState(0);
 
-  useEffect(() => { settingsRef.current = { xAxis, yMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, highlightOnClick, highlightedIonId, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors }; });
+  useEffect(() => { settingsRef.current = { xAxis, yMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, highlightOnClick, highlightedIonId, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors, colorPalette }; });
 
   const shouldShowLegend =
     showLegend && (forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
@@ -380,18 +383,19 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
         options.set(row.ionId, {
           ionId: row.ionId,
           name: traceName(row.targetMz, row.label),
-          fallbackColor: defaultTraceColors[options.size % defaultTraceColors.length],
+          fallbackColor: paletteColor(colorPalette, row.targetMz, options.size),
         });
       }
     });
 
     return Array.from(options.values());
-  }, [rows]);
+  }, [rows, colorPalette]);
 
   const plotData = useMemo(
     () =>
       buildPlotData(rows, xAxis, yMode, shouldShowLegend, {
         colors: traceColors,
+        colorPalette,
         lineWidth,
         markerSize,
         lineShape,
@@ -412,6 +416,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
       rows,
       shouldShowLegend,
       traceColors,
+      colorPalette,
       xAxis,
       xValueMultiplier,
       yMode,
@@ -777,18 +782,32 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   };
 
   const applyMonoMagentaPalette = () => {
-    setTraceColors(
-      Object.fromEntries(
-        ionOptions.map((option, index) => [
-          option.ionId,
-          index === 0 ? "#000000" : "#8a008a",
-        ]),
-      ),
-    );
+    applyColorPalette("mono-magenta");
   };
 
   const resetTraceColors = () => {
+    applyColorPalette("trms");
+  };
+
+  const applyColorPalette = (id: ColorPaletteId) => {
+    setColorPalette(id);
     setTraceColors({});
+  };
+
+  const applyTrmsDefaults = () => {
+    const preset = trmsPlotDefaults;
+    applyDefaultStyle();
+    setXAxis(preset.xAxis); setXTitle(preset.xTitle); setXUnit(preset.xUnit);
+    setXValueScale(preset.xValueScale); setXValueMultiplier(preset.xValueMultiplier);
+    setYMode(preset.yMode); setYTitle(preset.yTitle); setYUnit(preset.yUnit);
+    setXMin(preset.xMin); setXMax(preset.xMax); setYMin(preset.yMin); setYMax(preset.yMax);
+    setXTickFormat("auto"); setYTickFormat("auto");
+    setCurveMode(preset.curveMode); setMovingAverageWindow(preset.movingAverageWindow); setLineShape(preset.lineShape);
+    setLegendColumns(preset.legendColumns); setLegendInsideX(preset.legendInsideX); setLegendInsideY(preset.legendInsideY);
+    setForceSingleLegend(preset.forceSingleLegend);
+    applyColorPalette(preset.colorPalette);
+    setRenderAttempt(value => value + 1);
+    setStylePresetStatus("TRMS defaults applied");
   };
 
   const currentStyleSettings = (): PlotStyleSettings => ({
@@ -828,6 +847,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     tracePalette: ionOptions.map(
       (option) => traceColors[option.ionId] ?? option.fallbackColor,
     ),
+    colorPalette,
   });
 
   const saveCurrentStyle = () => {
@@ -905,6 +925,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     setGridColor(settings.gridColor);
     setPlotBackground(settings.plotBackground);
     setPaperBackground(settings.paperBackground);
+    setColorPalette(readColorPalette(settings.colorPalette));
     setTraceColors(
       settings.tracePalette.length > 0
         ? Object.fromEntries(
@@ -1468,6 +1489,10 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
             className="plot-control-group"
             hidden={activeStyleTab !== "presets"}
           >
+            <h3>TRMS default</h3>
+            <p>Time in minutes · share of selected ions (%) · 3-point moving average + measured points · one-column inside legend · Arial.</p>
+            <button type="button" className="secondary-button" onClick={applyTrmsDefaults}>Apply TRMS default</button>
+            <p className="fit-guidance">Uses acquisition time stored in seconds. Keeps your selected ions and applies the reference colors.</p>
             <h3>Journal and saved styles</h3>
             <p className="control-subheading">Journal</p>
             <div className="style-grid publication-grid">
@@ -2030,6 +2055,18 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
             className="plot-control-group"
             hidden={activeStyleTab !== "colors"}
           >
+            <h3>Color presets</h3>
+            <label className="saved-style-name">
+              <span>Color preset</span>
+              <select value={colorPalette} onChange={event => applyColorPalette(readColorPalette(event.target.value))}>
+                {colorPalettes.map(palette => <option key={palette.id} value={palette.id}>{palette.name}</option>)}
+              </select>
+            </label>
+            <div className="palette-swatches" aria-label="Preset colors">
+              {colorPalettes.find(palette => palette.id === colorPalette)!.colors.map((color, index) => <span key={`${color}-${index}`} style={{backgroundColor:color}} title={color} aria-label={color} role="img" />)}
+            </div>
+            <p className="fit-guidance">Choosing a preset replaces individual color edits. You can customize each curve below.</p>
+            {colorPalette === "trms" && <p className="fit-guidance">Reference m/z colors: 751 blue · 659 orange · 617 yellow · 375 purple · 283 green · 255 light blue · 241 burgundy.</p>}
             <h3>Plot colors</h3>
             <div className="style-grid color-settings-grid">
               <ColorControl

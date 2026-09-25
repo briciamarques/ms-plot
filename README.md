@@ -163,6 +163,28 @@ mass-alignment algorithm or a reconstruction of DataAnalysis's average spectrum.
 Intensity values use full stored numeric precision and absolute units. Older
 projects containing only averaged integer peaks require reimport for finer m/z.
 
+## TRMS default and color presets
+
+**Plot → Style → Presets → Apply TRMS default** applies the supplied example's
+settings: acquisition time in minutes (stored seconds × 1/60), **Time** and
+**Relative Intensity (%)** titles, share of selected ions per segment,
+3-point moving average plus measured points, 2.5 line width, 7 marker size,
+Arial, and a 24 px inside-top legend in one column. Highlighting starts off and
+the legend stays enabled for a single ion. Axis minima are zero; maxima fit the
+data automatically. This action keeps the selected ions and imported peaks.
+The separate Origin reproduction preset retains its validated 5-point averaging.
+
+**Plot → Style → Colors → Color preset** offers **TRMS reference (default)**,
+the original site palette, and black + magenta. The reference colors were sampled
+from the supplied image: 751 `#0072bd`, 659 `#d95319`, 617 `#edb120`,
+375 `#7e2f8e`, 283 `#77ac30`, 255 `#4dbeee`, 241 `#a2142f`.
+These exact target masses retain their reference colors regardless of ion order
+or run; other targets cycle through the palette. Each curve can still be edited.
+Choosing a color preset clears individual overrides; **Reset colors** restores
+the TRMS palette. Palette selection and overrides are included in saved projects
+and styles. Existing projects retain their explicit saved colors until a preset
+is applied. Newly imported runs and new plots use the reference palette.
+
 ## Axis limits
 
 Blank numeric limits fit the plotted points and fitted/smoothed curves with 2%

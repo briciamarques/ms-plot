@@ -6,7 +6,7 @@ import ts from 'typescript';
 
 // Compile the pure processing modules with the installed compiler, without extra dependencies.
 const output = path.resolve('node_modules/.tmp/bruker-tests');
-for (const name of ['types', 'utils/id', 'utils/filenameMetadata', 'utils/bruker', 'utils/project', 'utils/processing', 'utils/csv', 'utils/plot', 'utils/format', 'utils/segmentSpectrum', 'utils/plotLifecycle', 'utils/axisRange']) {
+for (const name of ['types', 'utils/id', 'utils/filenameMetadata', 'utils/bruker', 'utils/project', 'utils/processing', 'utils/csv', 'utils/plot', 'utils/format', 'utils/segmentSpectrum', 'utils/plotLifecycle', 'utils/axisRange', 'utils/colorPalettes']) {
   const result = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ES2020 },
   }).outputText.replace(/from "(\.[^"]+)"/g, 'from "$1.mjs"');
@@ -19,7 +19,7 @@ const { parseBrukerExport, findBrukerFiles, roundMass } = await load('bruker');
 const { createProjectSnapshot, parseProjectSnapshot } = await load('project');
 const { processSpectra, extractBrukerIntensity, normalizeIntensities } = await load('processing');
 const { plotRowsToCsv, processedRowsToCsv } = await load('csv');
-const { buildPlotData, movingAverageValues, legendGeometry, insideLegendColumns, defaultPlotAppearance } = await load('plot');
+const { buildPlotData, movingAverageValues, legendGeometry, insideLegendColumns, defaultPlotAppearance, trmsPlotDefaults } = await load('plot');
 const { formatMz, formatIntensity } = await load('format');
 const { segmentSpectrum, spectrumToTxt, segmentSpectrumFilename } = await load('segmentSpectrum');
 assert.equal(formatMz(100.1234567), '100.1234567');
@@ -274,6 +274,28 @@ assert.deepEqual(axisRange('', '', undefined), {});
 const fixedRange = axisRangeLayout(axisRange('0', '100', [0, 90]).range);
 assert.deepEqual(fixedRange, {autorange:false,range:[0,100],autorangeoptions:{minallowed:0,maxallowed:100}});
 console.log('PASS: compact automatic axis margins, exact zero bounds, constant data and modebar range constraints.');
+const { paletteColor, trmsColors } = await load('colorPalettes');
+const referenceMasses = [751, 659, 617, 375, 283, 255, 241];
+assert.deepEqual(referenceMasses.map(mass=>paletteColor('trms',mass,0)), ['#0072bd','#d95319','#edb120','#7e2f8e','#77ac30','#4dbeee','#a2142f']);
+const paletteRows = referenceMasses.slice().reverse().map((mass,index)=>({...basis,id:`palette-${mass}`,ionId:`palette-ion-${mass}`,targetMz:mass,seriesId:'one',absoluteIntensity:index+1}));
+const paletteStyle = {colors:{},lineWidth:2.5,markerSize:7,lineShape:'linear',curveMode:'connect',polynomialDegree:3};
+const mapped = buildPlotData(paletteRows,'retentionTime','absolute',true,paletteStyle);
+assert.deepEqual(mapped.map(trace=>trace.line.color), trmsColors.slice().reverse());
+const secondRun = paletteRows.map(row=>({...row,id:row.id+'-second',seriesId:'two'}));
+assert.deepEqual(buildPlotData([...paletteRows,...secondRun],'retentionTime','absolute',true,paletteStyle).map(trace=>trace.line.color), [...trmsColors.slice().reverse(),...trmsColors.slice().reverse()]);
+const overridden = buildPlotData(paletteRows,'retentionTime','absolute',true,{...paletteStyle,colors:{'palette-ion-241':'#123456'}});
+assert.equal(overridden[0].line.color,'#123456');
+assert.equal(buildPlotData(paletteRows,'retentionTime','absolute',true,{...paletteStyle,colorPalette:'classic'})[0].line.color,'#000000');
+assert.equal(trmsPlotDefaults.movingAverageWindow,3);
+assert.equal(trmsPlotDefaults.yMode,'selectedSum');
+assert.equal(trmsPlotDefaults.xValueMultiplier,1/60);
+assert.equal(trmsPlotDefaults.legendColumns,1);
+assert.equal(trmsPlotDefaults.legendSize,24);
+assert.equal(trmsPlotDefaults.fontFamily,'Arial');
+assert.equal(trmsPlotDefaults.highlightOnClick,false);
+const trmsProject = {...project,plotSettings:{...trmsPlotDefaults,traceColors:{'palette-ion-241':'#123456'}}};
+assert.deepEqual(parseProjectSnapshot(JSON.stringify(trmsProject)).plotSettings,trmsProject.plotSettings);
+console.log('PASS: reference colors by m/z across ordering/runs, manual overrides, color presets and saved TRMS settings.');
 
 if (process.argv[2]) {
   const folder = process.argv[2];

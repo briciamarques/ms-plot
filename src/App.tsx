@@ -345,7 +345,6 @@ function App() {
             setSelectedIds(current => new Set([...current, ...imported.map(file => file.id)]));
             if (originPreset) {
               const masses = [241, 255, 751, 311, 617, 375, 163, 271, 283];
-              const colors = ["#ff2626", "#555555", "#00bcc8", "#25aa63", "#d8a600", "#ad70ed", "#91514b", "#8b9e00", "#0072b2"];
               const presetIons = masses.map(mass => ({ id: createId("ion"), targetMz: String(mass), label: "" }));
               updateIons(presetIons);
               setSelectedIds(new Set(imported.map(file => file.id)));
@@ -353,7 +352,7 @@ function App() {
               setPlotInitial({ xAxis: "retentionTime", xTitle: "Time", xUnit: "min", xValueScale: "secondsToMinutes", xValueMultiplier: 1 / 60,
                 yMode: "selectedSum", yTitle: "Relative intensity", yUnit: "%", yMin: "0", yMax: "100", xMin: "0",
                 ...defaultPlotAppearance, curveMode: "movingAverage", movingAverageWindow: 5, lineShape: "linear",
-                traceColors: Object.fromEntries(presetIons.map((ion, i) => [ion.id, colors[i]])) });
+                colorPalette: "trms", traceColors: {} });
               setPlotRevision(value => value + 1);
               setActiveWorkspaceTab("plot");
             } else if (files.length === 0) {
