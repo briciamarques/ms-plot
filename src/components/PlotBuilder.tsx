@@ -1,4 +1,3 @@
-import { plotYValue } from "../types";
 import Plotly from "plotly.js-dist-min";
 import { Download, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -6,6 +5,7 @@ import type { LegendPosition, ProcessedRow, XAxisKey, YMode } from "../types";
 import { xAxisOptions, yModeOptions } from "../types";
 import { downloadTextFile, plotRowsToCsv } from "../utils/csv";
 import { queuePlotTask } from "../utils/plotLifecycle";
+import { axisRange, axisRangeLayout, numericBounds } from "../utils/axisRange";
 import {
   buildPlotData,
   defaultTraceColors,
@@ -211,68 +211,6 @@ const defaultXAxisUnit = (axis: XAxisKey): string => {
 
 const axisTitleWithUnit = (title: string, unit: string): string =>
   unit.trim() ? `${title.trim()} (${unit.trim()})` : title;
-
-const parseOptionalNumber = (value: string): number | null => {
-  if (value.trim() === "") {
-    return null;
-  }
-
-  const parsedValue = Number(value);
-  return Number.isFinite(parsedValue) ? parsedValue : null;
-};
-
-const expandEqualRange = (value: number): [number, number] => {
-  const padding = Math.max(Math.abs(value) * 0.05, 1);
-  return [value - padding, value + padding];
-};
-
-const normalizeRange = (min: number, max: number): [number, number] =>
-  min === max ? expandEqualRange(min) : min < max ? [min, max] : [max, min];
-
-const parseRange = (
-  min: string,
-  max: string,
-  dataBounds?: [number, number],
-): [number, number] | undefined => {
-  const parsedMin = parseOptionalNumber(min);
-  const parsedMax = parseOptionalNumber(max);
-
-  if (parsedMin === null && parsedMax === null) {
-    return undefined;
-  }
-
-  if (parsedMin !== null && parsedMax !== null) {
-    return normalizeRange(parsedMin, parsedMax);
-  }
-
-  if (!dataBounds) {
-    return undefined;
-  }
-
-  return normalizeRange(
-    parsedMin ?? dataBounds[0],
-    parsedMax ?? dataBounds[1],
-  );
-};
-
-const numericPrefix = (value: string): number | null => {
-  const match = value.trim().match(/^-?\d+(?:\.\d+)?/);
-  if (!match) {
-    return null;
-  }
-
-  const parsedValue = Number(match[0]);
-  return Number.isFinite(parsedValue) ? parsedValue : null;
-};
-
-const boundsFromValues = (values: number[]): [number, number] | undefined => {
-  const numericValues = values.filter(Number.isFinite);
-  if (numericValues.length === 0) {
-    return undefined;
-  }
-
-  return normalizeRange(Math.min(...numericValues), Math.max(...numericValues));
-};
 
 const tickFormatValue = (format: TickFormat): string | undefined => {
   if (format === "plain") {
@@ -543,22 +481,10 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   const plotRenderWidth = previewExportRatio ? safeExportWidth : undefined;
   const plotRenderHeight = previewExportRatio ? safeExportHeight : plotHeight;
 
-  const xDataBounds = useMemo(() => {
-    const values = rows
-      .map((row) => numericPrefix(row.metadata[xAxis] ?? ""))
-      .map((value) => (value === null ? null : value * xValueMultiplier))
-      .filter((value): value is number => value !== null);
-
-    return boundsFromValues(values);
-  }, [rows, xAxis, xValueMultiplier]);
-
-  const yDataBounds = useMemo(() => {
-    const values = rows.map((row) =>
-      plotYValue(row, yMode),
-    );
-
-    return boundsFromValues(values);
-  }, [rows, yMode]);
+  const xDataBounds = useMemo(() => numericBounds(plotData.flatMap(trace => trace.x)), [plotData]);
+  const yDataBounds = useMemo(() => numericBounds(plotData.flatMap(trace => trace.y)), [plotData]);
+  const xAxisRange = useMemo(() => axisRange(xMin, xMax, xDataBounds), [xMin, xMax, xDataBounds]);
+  const yAxisRange = useMemo(() => axisRange(yMin, yMax, yDataBounds), [yMin, yMax, yDataBounds]);
 
   useEffect(() => {
     try {
@@ -606,8 +532,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
       return;
     }
 
-    const xRange = parseRange(xMin, xMax, xDataBounds);
-    const yRange = parseRange(yMin, yMax, yDataBounds);
+    if (xAxisRange.error || yAxisRange.error) return;
     const xTickFormatValue = tickFormatValue(xTickFormat);
     const yTickFormatValue = tickFormatValue(yTickFormat);
     const legendSpace = legendGeometry(legendPosition,
@@ -641,8 +566,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
           font: { size: axisTitleSize, family: fontFamily },
         },
         automargin: true,
-        autorange: xRange ? false : true,
-        range: xRange,
+        ...axisRangeLayout(xAxisRange.range),
         tickformat: xTickFormatValue,
         showgrid: showGrid,
         gridcolor: gridColor,
@@ -664,8 +588,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
         },
         automargin: true,
         fixedrange: xZoomOnly,
-        autorange: yRange ? false : true,
-        range: yRange,
+        ...axisRangeLayout(yAxisRange.range),
         tickformat: yTickFormatValue,
         showgrid: showGrid,
         gridcolor: gridColor,
@@ -678,7 +601,6 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
         tickwidth: axisLineWidth,
         tickcolor: axisColor,
         tickfont: { size: tickSize, family: fontFamily, color: axisColor },
-        rangemode: "tozero",
         zeroline: showGrid,
         zerolinecolor: gridColor,
       },
@@ -701,7 +623,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
         color: axisColor,
       },
       hovermode: "closest",
-      uirevision: JSON.stringify([xAxis, yMode, xValueMultiplier, xMin, xMax, yMin, yMax, rows.length, rows[0]?.id, rows[rows.length - 1]?.id]),
+      uirevision: JSON.stringify([xAxis, yMode, xValueMultiplier, xMin, xMax, yMin, yMax, renderAttempt, rows.length, rows[0]?.id, rows[rows.length - 1]?.id]),
     };
 
     const interactive = plotElement as InteractivePlotElement;
@@ -727,6 +649,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
         displaylogo: false,
         modeBarButtonsToRemove: ["lasso2d", "select2d"],
         scrollZoom: true,
+        doubleClick: "reset",
       });
       if (!isCurrent()) return;
       listenersAttached = true;
@@ -783,6 +706,8 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     titleSize,
     xZoomOnly,
     xDataBounds,
+    xAxisRange,
+    yAxisRange,
     xMax,
     xMin,
     xTickFormat,
@@ -1162,21 +1087,24 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   };
 
   const setRangeToDataLimits = () => {
-    if (xDataBounds) {
-      setXMin(String(xDataBounds[0]));
-      setXMax(String(xDataBounds[1]));
+    const xLimits = xDataBounds?.[0] === xDataBounds?.[1] ? axisRange("", "", xDataBounds).range : xDataBounds;
+    const yLimits = yDataBounds?.[0] === yDataBounds?.[1] ? axisRange("", "", yDataBounds).range : yDataBounds;
+    if (xLimits) {
+      setXMin(String(xLimits[0]));
+      setXMax(String(xLimits[1]));
     } else {
       setXMin("");
       setXMax("");
     }
 
-    if (yDataBounds) {
-      setYMin(String(yDataBounds[0]));
-      setYMax(String(yDataBounds[1]));
+    if (yLimits) {
+      setYMin(String(yLimits[0]));
+      setYMax(String(yLimits[1]));
     } else {
       setYMin("");
       setYMax("");
     }
+    setRenderAttempt(value => value + 1);
   };
 
   const clearAxisRanges = () => {
@@ -1184,6 +1112,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     setXMax("");
     setYMin("");
     setYMax("");
+    setRenderAttempt(value => value + 1);
   };
 
   const exportPng = () => {
@@ -1409,6 +1338,8 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
 
             <div className="plot-control-group">
               <h3>Ticks and range</h3>
+              <p>Blank limits fit the curves with a small margin. Entered limits are exact, including zero.</p>
+              {(xAxisRange.error || yAxisRange.error) && <p role="alert">{xAxisRange.error ? `x axis: ${xAxisRange.error} ` : ""}{yAxisRange.error ? `y axis: ${yAxisRange.error}` : ""}</p>}
               <div className="axis-range-controls">
                 <label>
                   <span>x ticks</span>

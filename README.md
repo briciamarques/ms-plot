@@ -163,6 +163,17 @@ mass-alignment algorithm or a reconstruction of DataAnalysis's average spectrum.
 Intensity values use full stored numeric precision and absolute units. Older
 projects containing only averaged integer peaks require reimport for finer m/z.
 
+## Axis limits
+
+Blank numeric limits fit the plotted points and fitted/smoothed curves with 2%
+padding on each automatic side. Nonnegative data does not acquire negative space
+below zero. Typed limits are exact, including zero; with only one limit entered,
+only the opposite endpoint is automatic. Autoscale follows the same bounds, and
+double-click resets to them. **Clear range** restores the compact automatic fit.
+Equal or reversed manual limits show a validation message instead of silently
+moving the minimum. Categorical axes retain their usual spacing.
+Open `/tests/browser/axis-range.html` in Vite to check the real Plotly behavior.
+
 ## Navigation and recovery
 
 Ion-list edits remain a draft until **Load ion list** is clicked. A pending-change

@@ -6,7 +6,7 @@ import ts from 'typescript';
 
 // Compile the pure processing modules with the installed compiler, without extra dependencies.
 const output = path.resolve('node_modules/.tmp/bruker-tests');
-for (const name of ['types', 'utils/id', 'utils/filenameMetadata', 'utils/bruker', 'utils/project', 'utils/processing', 'utils/csv', 'utils/plot', 'utils/format', 'utils/segmentSpectrum', 'utils/plotLifecycle']) {
+for (const name of ['types', 'utils/id', 'utils/filenameMetadata', 'utils/bruker', 'utils/project', 'utils/processing', 'utils/csv', 'utils/plot', 'utils/format', 'utils/segmentSpectrum', 'utils/plotLifecycle', 'utils/axisRange']) {
   const result = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ES2020 },
   }).outputText.replace(/from "(\.[^"]+)"/g, 'from "$1.mjs"');
@@ -256,6 +256,24 @@ await retryRender.done;
 assert.deepEqual(failures, [syncError, 'async render failure']);
 assert.equal(lifecycle.at(-1), 'retry');
 console.log('PASS: serialized plot updates, cancellation, deferred cleanup, error recovery and saved ion drafts.');
+const { axisRange, axisRangeLayout, numericBounds } = await load('axisRange');
+assert.deepEqual(axisRange('', '', [0, 100]).range, [0, 102]);
+assert.deepEqual(axisRange('', '', [10, 20]).range, [9.8, 20.2]);
+assert.deepEqual(axisRange('', '', [-10, 10]).range, [-10.4, 10.4]);
+assert.deepEqual(axisRange('0', '', [0, 0]).range, [0, 1]);
+assert.deepEqual(axisRange('0', '', [-5, -1]).range, [0, 0.08]);
+assert.deepEqual(axisRange('', '0', [1, 5]).range, [-0.08, 0]);
+assert.deepEqual(axisRange('0', '100', [1, 120]).range, [0, 100]);
+assert.deepEqual(axisRange('0', '', undefined).range, [0, 1]);
+assert.ok(axisRange('0', '0', [0, 0]).error);
+assert.ok(axisRange('20', '10', [0, 30]).error);
+assert.deepEqual(numericBounds([0, NaN, 15, Infinity]), [0, 15]);
+assert.equal(numericBounds(['dark', 'light']), undefined);
+assert.equal(numericBounds([]), undefined);
+assert.deepEqual(axisRange('', '', undefined), {});
+const fixedRange = axisRangeLayout(axisRange('0', '100', [0, 90]).range);
+assert.deepEqual(fixedRange, {autorange:false,range:[0,100],autorangeoptions:{minallowed:0,maxallowed:100}});
+console.log('PASS: compact automatic axis margins, exact zero bounds, constant data and modebar range constraints.');
 
 if (process.argv[2]) {
   const folder = process.argv[2];
