@@ -1,5 +1,7 @@
+import { plotYValue } from "../types";
 import type { ProcessedRow, XAxisKey, YMode } from "../types";
 import { xAxisOptions, yModeOptions } from "../types";
+import { movingAverageByRow } from "./plot";
 
 const escapeCsvValue = (value: string | number | null): string => {
   const stringValue = value === null ? "" : String(value);
@@ -26,9 +28,10 @@ export const processedRowsToCsv = (rows: ProcessedRow[], delimiter = ","): strin
     "found m/z",
     "label",
     "absolute intensity",
-    "relative intensity",
+    "relative intensity (each ion own maximum = 100%)",
+    "share of selected ions per segment (%)",
     "warning",
-    "acquisition time midpoint (s)", "segment", "notes",
+    "acquisition time (s)", "segment", "notes",
   ];
 
   const csvRows = rows.map((row) => [
@@ -46,6 +49,7 @@ export const processedRowsToCsv = (rows: ProcessedRow[], delimiter = ","): strin
     row.label,
     row.absoluteIntensity,
     row.relativeIntensity,
+    row.selectedIonPercent,
     row.warning,
     row.metadata.retentionTime, row.metadata.segment, row.metadata.notes,
   ]);
@@ -91,7 +95,9 @@ export const plotRowsToCsv = (
   xValueMultiplier = 1,
   xAxisDisplayLabel?: string,
   delimiter = ",",
+  movingAverageWindow?: number,
 ): string => {
+  const smoothed = movingAverageWindow === undefined ? undefined : movingAverageByRow(rows, xAxis, yMode, movingAverageWindow);
   const headers = [
     "plot x axis",
     "plot x value",
@@ -110,16 +116,18 @@ export const plotRowsToCsv = (
     "found m/z",
     "label",
     "absolute intensity",
-    "relative intensity",
+    "relative intensity (each ion own maximum = 100%)",
+    "share of selected ions per segment (%)",
     "warning",
-    "acquisition time midpoint (s)", "segment", "notes",
+    "acquisition time (s)", "segment", "notes",
+    ...(smoothed ? ["smoothing", "smoothed plot y value"] : []),
   ];
 
   const csvRows = rows.map((row) => [
     xAxisDisplayLabel ?? axisLabel(xAxis),
     plotAxisValue(row.metadata[xAxis] ?? "", xValueMultiplier),
     yModeLabel(yMode),
-    yMode === "absolute" ? row.absoluteIntensity : row.relativeIntensity,
+    plotYValue(row, yMode),
     row.filename,
     row.metadata.compound,
     row.metadata.parentIon,
@@ -134,8 +142,10 @@ export const plotRowsToCsv = (
     row.label,
     row.absoluteIntensity,
     row.relativeIntensity,
+    row.selectedIonPercent,
     row.warning,
     row.metadata.retentionTime, row.metadata.segment, row.metadata.notes,
+    ...(smoothed ? [`Centered moving average (${movingAverageWindow} points; symmetric shrinking endpoints)`, smoothed.get(row.id) ?? null] : []),
   ]);
 
   return [headers, ...csvRows]

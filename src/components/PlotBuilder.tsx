@@ -1,3 +1,4 @@
+import { plotYValue } from "../types";
 import Plotly from "plotly.js-dist-min";
 import { Download, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -43,12 +44,13 @@ type PlotFont =
 type LineShape = "linear" | "spline";
 type CurveMode =
   | "connect"
+  | "movingAverage"
   | "polynomial"
   | "exponential"
   | "logistic"
   | "auto";
 type TickFormat = "auto" | "plain" | "scientific";
-type XValueScale = "raw" | "msToSeconds" | "custom";
+type XValueScale = "raw" | "msToSeconds" | "secondsToMinutes" | "custom";
 type JournalPresetKey = "jasms-single";
 type FigureContent = "color" | "grayscale" | "lineArt";
 type RasterDpi = 300 | 600 | 1200;
@@ -73,6 +75,7 @@ type PlotStyleSettings = {
   lineShape: LineShape;
   curveMode?: CurveMode;
   polynomialDegree?: number;
+  movingAverageWindow?: number;
   previewExportRatio: boolean;
   plotHeight: number;
   exportWidth: number;
@@ -353,8 +356,8 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   const [showTitle, setShowTitle] = useState(() => readPlotSetting(initialSettings, "showTitle", true));
   const [xTitle, setXTitle] = useState(() => readPlotSetting(initialSettings, "xTitle", axisLabel("acqTime")));
   const [xUnit, setXUnit] = useState(() => readPlotSetting(initialSettings, "xUnit", "ms"));
-  const [yTitle, setYTitle] = useState(() => readPlotSetting(initialSettings, "yTitle", yMode === "absolute" ? "Absolute intensity" : "Relative intensity"));
-  const [yUnit, setYUnit] = useState(() => readPlotSetting(initialSettings, "yUnit", yMode === "relative" ? "%" : ""));
+  const [yTitle, setYTitle] = useState(() => readPlotSetting(initialSettings, "yTitle", yMode === "absolute" ? "Absolute intensity" : yMode === "selectedSum" ? "Share of selected ions" : "Intensity / own maximum"));
+  const [yUnit, setYUnit] = useState(() => readPlotSetting(initialSettings, "yUnit", yMode !== "absolute" ? "%" : ""));
   const [xValueScale, setXValueScale] = useState<XValueScale>(() => readPlotSetting(initialSettings, "xValueScale", "raw"));
   const [xValueMultiplier, setXValueMultiplier] = useState(() => readPlotSetting(initialSettings, "xValueMultiplier", 1));
   const [xTickFormat, setXTickFormat] = useState<TickFormat>(() => readPlotSetting(initialSettings, "xTickFormat", "auto"));
@@ -382,6 +385,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   const [lineShape, setLineShape] = useState<LineShape>(() => readPlotSetting(initialSettings, "lineShape", "linear"));
   const [curveMode, setCurveMode] = useState<CurveMode>(() => readPlotSetting(initialSettings, "curveMode", "connect"));
   const [polynomialDegree, setPolynomialDegree] = useState(() => readPlotSetting(initialSettings, "polynomialDegree", 3));
+  const [movingAverageWindow, setMovingAverageWindow] = useState(() => readPlotSetting(initialSettings, "movingAverageWindow", 5));
   const [previewExportRatio, setPreviewExportRatio] = useState(() => readPlotSetting(initialSettings, "previewExportRatio", true));
   const [plotHeight, setPlotHeight] = useState(() => readPlotSetting(initialSettings, "plotHeight", 640));
   const [exportWidth, setExportWidth] = useState(() => readPlotSetting(initialSettings, "exportWidth", 1000));
@@ -405,7 +409,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   const [previewAreaWidth, setPreviewAreaWidth] = useState(0);
   const [previewAreaHeight, setPreviewAreaHeight] = useState(0);
 
-  useEffect(() => { settingsRef.current = { xAxis, yMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors }; });
+  useEffect(() => { settingsRef.current = { xAxis, yMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors }; });
 
   const shouldShowLegend =
     showLegend && (forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
@@ -439,6 +443,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
         lineShape,
         curveMode,
         polynomialDegree,
+        movingAverageWindow,
       }, xValueMultiplier),
     [
       curveMode,
@@ -446,6 +451,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
       lineWidth,
       markerSize,
       polynomialDegree,
+      movingAverageWindow,
       rows,
       shouldShowLegend,
       traceColors,
@@ -529,7 +535,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
 
   const yDataBounds = useMemo(() => {
     const values = rows.map((row) =>
-      yMode === "absolute" ? row.absoluteIntensity : row.relativeIntensity,
+      plotYValue(row, yMode),
     );
 
     return boundsFromValues(values);
@@ -804,6 +810,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     lineShape,
     curveMode,
     polynomialDegree,
+    movingAverageWindow,
     previewExportRatio,
     plotHeight,
     exportWidth: safeExportWidth,
@@ -880,6 +887,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     setLineShape(settings.lineShape);
     setCurveMode(settings.curveMode ?? "connect");
     setPolynomialDegree(settings.polynomialDegree ?? 3);
+    setMovingAverageWindow(settings.movingAverageWindow ?? 5);
     setPreviewExportRatio(settings.previewExportRatio);
     setPlotHeight(settings.plotHeight);
     setExportWidth(settings.exportWidth);
@@ -942,10 +950,16 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
 
     if (nextScale === "raw") {
       setXValueMultiplier(1);
+      setXUnit(defaultXAxisUnit(xAxis));
     }
 
     if (nextScale === "msToSeconds") {
       setXValueMultiplier(0.001);
+      setXUnit("s");
+    }
+    if (nextScale === "secondsToMinutes") {
+      setXValueMultiplier(1 / 60);
+      setXUnit("min");
     }
   };
 
@@ -1119,6 +1133,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
         xValueMultiplier,
         axisTitleWithUnit(xTitle, xUnit),
         format === "txt" ? "\t" : ",",
+        curveMode === "movingAverage" ? movingAverageWindow : undefined,
       ),
       format === "txt" ? "text/plain;charset=utf-8" : "text/csv;charset=utf-8",
     );
@@ -1201,8 +1216,11 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
                     onChange={(event) => {
                       const mode = event.target.value as YMode;
                       setYMode(mode);
-                      setYTitle(mode === "absolute" ? "Absolute intensity" : "Relative intensity");
-                      setYUnit(mode === "relative" ? "%" : "");
+                      // A percentage range would clip an absolute-intensity plot.
+                      setYMin("");
+                      setYMax("");
+                      setYTitle(mode === "absolute" ? "Absolute intensity" : mode === "selectedSum" ? "Share of selected ions" : "Intensity / own maximum");
+                      setYUnit(mode !== "absolute" ? "%" : "");
                     }}
                   >
                     {yModeOptions.map((option) => (
@@ -1212,6 +1230,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
                     ))}
                   </select>
                 </label>
+                <p className="fit-guidance">{yMode === "selectedSum" ? "For each file/segment: 100 × ion intensity / sum of all targets in Ions. Changing the ion list changes the percentages. Hiding a curve in the legend does not change the denominator. An all-zero segment is shown as zero." : yMode === "relative" ? "Each ion is divided by its own maximum across the plotted files. This compares temporal profiles, not relative abundance between ions." : "Extracted intensity before normalization."}</p>
 
                 <label>
                   <span>Plot title</span>
@@ -1266,6 +1285,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
                   >
                     <option value="raw">Raw values</option>
                     <option value="msToSeconds">ms to s</option>
+                    <option value="secondsToMinutes">s to min</option>
                     <option value="custom">Custom multiplier</option>
                   </select>
                 </label>
@@ -1665,6 +1685,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
                   }
                 >
                   <option value="connect">Connect points</option>
+                  <option value="movingAverage">Moving average + measured points</option>
                   <option value="auto">Auto fit</option>
                   <option value="polynomial">Polynomial fit</option>
                   <option value="exponential">Exponential plateau</option>
@@ -1672,7 +1693,13 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
                 </select>
               </label>
 
-              {curveMode === "polynomial" ? (
+              {curveMode === "movingAverage" ? (
+                <label><span>Moving average window</span>
+                  <select value={movingAverageWindow} onChange={event => setMovingAverageWindow(Number(event.target.value))}>
+                    {[3, 5, 7, 9, 11, 15, 21, 31].map(size => <option key={size} value={size}>{size} points{size === 5 ? " (Origin project)" : ""}</option>)}
+                  </select>
+                </label>
+              ) : curveMode === "polynomial" ? (
                 <label>
                   <span>Polynomial degree</span>
                   <input
@@ -1730,7 +1757,9 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
 
             {curveMode !== "connect" ? (
               <p className="fit-guidance">
-                {curveMode === "auto"
+                {curveMode === "movingAverage"
+                  ? "Lines show a centered moving average; dots retain the measured values. The window shrinks symmetrically at both ends. This averages points, not a fixed time span. CSV/TXT includes measured and smoothed values."
+                  : curveMode === "auto"
                   ? "Auto compares cubic polynomial, exponential and logistic fits for each m/z. Hover the curve to see the selected model and R2."
                   : "The fit uses numeric x values. Hover the curve to see the model and R2."}
               </p>

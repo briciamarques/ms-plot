@@ -330,10 +330,24 @@ function App() {
           />
 
         <div className="workspace-tab-panel" hidden={activeWorkspaceTab !== "bruker"}>
-          <BrukerImport onImport={imported => {
+          <BrukerImport onImport={(imported, originPreset) => {
             setFiles(current => [...current, ...imported]);
             setSelectedIds(current => new Set([...current, ...imported.map(file => file.id)]));
-            if (files.length === 0) {
+            if (originPreset) {
+              const masses = [241, 255, 751, 311, 617, 375, 163, 271, 283];
+              const colors = ["#ff2626", "#555555", "#00bcc8", "#25aa63", "#d8a600", "#ad70ed", "#91514b", "#8b9e00", "#0072b2"];
+              const presetIons = masses.map(mass => ({ id: createId("ion"), targetMz: String(mass), label: "" }));
+              setIons(presetIons);
+              setSelectedIds(new Set(imported.map(file => file.id)));
+              setPlotSelectedOnly(true);
+              setPlotInitial({ xAxis: "retentionTime", xTitle: "Time", xUnit: "min", xValueScale: "secondsToMinutes", xValueMultiplier: 1 / 60,
+                yMode: "selectedSum", yTitle: "Relative intensity", yUnit: "%", yMin: "0", yMax: "100", xMin: "0",
+                showTitle: false, curveMode: "movingAverage", movingAverageWindow: 5, lineShape: "linear", lineWidth: 2.5, markerSize: 7,
+                exportWidth: 1000, exportHeight: 800, tickSize: 24, axisTitleSize: 28, legendSize: 24,
+                legendPosition: "inside", legendInsideY: 0.62, traceColors: Object.fromEntries(presetIons.map((ion, i) => [ion.id, colors[i]])) });
+              setPlotRevision(value => value + 1);
+              setActiveWorkspaceTab("plot");
+            } else if (files.length === 0) {
               setPlotInitial({ xAxis: "retentionTime", xTitle: "Acquisition time", xUnit: "s" });
               setPlotRevision(value => value + 1);
             }

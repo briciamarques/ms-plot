@@ -9,19 +9,33 @@ export type BrukerImport = {
   assignedScans: number;
 };
 
+export type BrukerOptions = { mzDecimals?: number; intervalSeconds?: number };
+
+export const roundMass = (value: number, decimals: number): number => {
+  const factor = 10 ** decimals;
+  const scaled = value * factor;
+  const lower = Math.floor(scaled);
+  // Preserve the lab Python script's ties-to-even rule, including integer masses.
+  return (scaled - lower === 0.5 ? lower + lower % 2 : Math.round(scaled)) / factor;
+};
+
 export function parseBrukerExport(
   ascii: string,
   segmentText: string,
   source: string,
   scanUnit: "min" | "s" = "min",
   segmentUnit: "min" | "s" = "s",
+  options: BrukerOptions = {},
 ): BrukerImport {
+  const interval = options.intervalSeconds;
+  if (interval !== undefined && (!Number.isFinite(interval) || interval <= 0)) throw new Error("Segment duration must be positive.");
+  if (options.mzDecimals !== undefined && (!Number.isInteger(options.mzDecimals) || options.mzDecimals < 0 || options.mzDecimals > 6)) throw new Error("Choose 0–6 m/z decimals or original precision.");
   const lines = segmentText.replace(/^\uFEFF/, "").split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const expectedScans = Number(lines.shift());
   if (!Number.isInteger(expectedScans) || expectedScans <= 0 || !lines.length) {
     throw new Error("Segments.txt must start with the scan count, followed by segment / start / end rows.");
   }
-  const segments = lines.map((line, index) => {
+  const exportedSegments = lines.map((line, index) => {
     const cells = line.split(/\s+/);
     const [id, rawStart, rawEnd] = cells.map(Number);
     const factor = segmentUnit === "min" ? 60 : 1;
@@ -34,12 +48,13 @@ export function parseBrukerExport(
     return { id, start, end, count: 0, peaks: [] as Peak[] };
   });
   const ids = new Set<number>();
-  segments.forEach((segment, index) => {
-    if (ids.has(segment.id) || (index > 0 && segment.start < segments[index - 1].end)) {
+  exportedSegments.forEach((segment, index) => {
+    if (ids.has(segment.id) || (index > 0 && segment.start < exportedSegments[index - 1].end)) {
       throw new Error("Segments must have unique IDs and ordered, non-overlapping time intervals.");
     }
     ids.add(segment.id);
   });
+  const segments = interval === undefined ? exportedSegments : [] as typeof exportedSegments;
   let totalScans = 0;
   let assignedScans = 0;
   let skippedScans = 0;
@@ -61,8 +76,20 @@ export function parseBrukerExport(
     if (!Number.isInteger(expectedPeaks) || expectedPeaks < 0 || pairs.length !== expectedPeaks) {
       throw new Error(`Peak count mismatch on data.ascii row ${index + 1}.`);
     }
-    const segment = segments.find((s, i) => time >= s.start &&
-      (time < s.end || (i === segments.length - 1 && time === s.end)));
+    let segment: typeof exportedSegments[number] | undefined;
+    if (interval !== undefined) {
+      // Work in the source time unit to match the old Python binning operation.
+      const bin = Math.floor(numeric(fields[0]) / (interval / (scanUnit === "min" ? 60 : 1)));
+      if (bin > 100000) throw new Error("Too many segments. Check the time unit and interval.");
+      while (segments.length <= bin) {
+        const i = segments.length;
+        segments.push({ id: i + 1, start: i * interval, end: (i + 1) * interval, count: 0, peaks: [] });
+      }
+      segment = segments[bin];
+    } else {
+      segment = segments.find((s, i) => time >= s.start &&
+        (time < s.end || (i === segments.length - 1 && time === s.end)));
+    }
     // Validate even out-of-range rows, so damaged exports cannot pass silently.
     pairs.forEach(pair => {
       const values = pair.trim().split(/\s+/);
@@ -86,15 +113,20 @@ export function parseBrukerExport(
   metadata.acqTime = "";
   metadata.activationTime = "";
   segments.filter(s => !s.count).forEach(s => warnings.push(`Segment ${s.id} contains no scans.`));
+  const runId = createId("run");
+  const calculation = options.mzDecimals === undefined ? "Original m/z, tolerance window" : `m/z rounded to ${options.mzDecimals} decimals (ties to even), exact mass bin`;
   const files = segments.map(s => {
     const peaks = s.peaks;
     const segmentWarnings = s.count ? [] : ["No scans in this segment; exclude it from the plot if appropriate."];
     return {
       id: createId("bruker"), filename: `${source} — segment ${s.id}`,
-      metadata: { ...metadata, segment: String(s.id), retentionTime: String((s.start + s.end) / 2),
-        notes: `Bruker: ${s.start}–${s.end} s; ${s.count} scans. Original exported m/z and intensities retained. Mean of observed peaks within the target tolerance; found m/z is their arithmetic mean. ${warnings.join(" ")}` },
+      metadata: { ...metadata, segment: String(s.id), retentionTime: String(interval === undefined ? (s.start + s.end) / 2 : s.start),
+        notes: `Bruker: ${s.start}–${s.end} s; ${s.count} scans. ${calculation}; mean of observed intensities. ${interval === undefined ? "Exported boundaries, midpoint time." : `Fixed ${interval} s intervals, start time.`} Original peaks retained. ${warnings.join(" ")}` },
       peaks, validLineCount: peaks.length, invalidLineCount: 0, warnings: segmentWarnings,
-      bruker: { source, segment: s.id, startSeconds: s.start, endSeconds: s.end, scanCount: s.count, method: "exact-mz-window-observed-mean" as const },
+      bruker: { source, segment: s.id, startSeconds: s.start, endSeconds: s.end, scanCount: s.count,
+        method: options.mzDecimals === undefined ? "exact-mz-window-observed-mean" as const : "rounded-mz-observed-mean" as const,
+        ...(options.mzDecimals === undefined ? {} : { mzDecimals: options.mzDecimals }),
+        ...(interval === undefined ? {} : { intervalSeconds: interval }), runId },
     };
   });
   return { files, warnings, totalScans, assignedScans };

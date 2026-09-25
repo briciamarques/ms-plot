@@ -1,3 +1,4 @@
+import { plotYValue } from "../types";
 import type { LegendPosition, ProcessedRow, XAxisKey, YMode } from "../types";
 import { formatMz } from "./format";
 
@@ -12,6 +13,7 @@ export type PlotTrace = {
   marker: { size: number; color: string };
   line: { width: number; color: string; shape: "linear" | "spline" };
   showlegend: boolean;
+  legendgroup?: string;
 };
 
 export type TraceStyleOptions = {
@@ -21,11 +23,13 @@ export type TraceStyleOptions = {
   lineShape: "linear" | "spline";
   curveMode:
     | "connect"
+    | "movingAverage"
     | "polynomial"
     | "exponential"
     | "logistic"
     | "auto";
   polynomialDegree: number;
+  movingAverageWindow?: number;
 };
 
 export const defaultTraceColors = [
@@ -531,6 +535,39 @@ export const traceName = (targetMz: number, label: string): string =>
     ? `<i>m/z</i> ${formatMz(targetMz)} - ${label.trim()}`
     : `<i>m/z</i> ${formatMz(targetMz)}`;
 
+// Symmetric shrinking endpoints match the saved Origin worksheet: 1, 3, 5, …, 3, 1.
+export const movingAverageValues = (values: number[], window = 5): number[] => {
+  if (!Number.isInteger(window) || window < 3 || window > 31 || window % 2 !== 1) {
+    throw new Error("Moving average requires an odd window of 3–31 points.");
+  }
+  return values.map((_, index) => {
+    const radius = Math.min((window - 1) / 2, index, values.length - 1 - index);
+    const neighbors = values.slice(index - radius, index + radius + 1);
+    return neighbors.reduce((sum, value) => sum + value, 0) / neighbors.length;
+  });
+};
+
+const groupRows = (rows: ProcessedRow[]) => {
+  const groups = new Map<string, ProcessedRow[]>();
+  rows.forEach(row => {
+    const key = JSON.stringify([row.ionId, row.seriesId ?? ""]);
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  });
+  return groups;
+};
+
+export const movingAverageByRow = (rows: ProcessedRow[], axis: XAxisKey, mode: YMode, window = 5): Map<string, number> => {
+  const result = new Map<string, number>();
+  groupRows(rows).forEach(group => {
+    const sorted = sortRowsByAxis(group, axis);
+    const smoothed = movingAverageValues(sorted.map(row => plotYValue(row, mode)), window);
+    sorted.forEach((row, index) => result.set(row.id, smoothed[index]));
+  });
+  return result;
+};
+
 export const buildPlotData = (
   rows: ProcessedRow[],
   axis: XAxisKey,
@@ -539,29 +576,37 @@ export const buildPlotData = (
   style: TraceStyleOptions,
   xValueMultiplier = 1,
 ): PlotTrace[] => {
-  const rowsByIon = new Map<string, ProcessedRow[]>();
-
-  rows.forEach((row) => {
-    const currentRows = rowsByIon.get(row.ionId) ?? [];
-    currentRows.push(row);
-    rowsByIon.set(row.ionId, currentRows);
-  });
+  const rowsByIon = groupRows(rows);
 
   return Array.from(rowsByIon.entries()).flatMap<PlotTrace>(
-    ([ionId, ionRows], index): PlotTrace[] => {
+    ([groupId, ionRows], index): PlotTrace[] => {
       const sortedRows = sortRowsByAxis(ionRows, axis);
       const firstRow = sortedRows[0];
       const color =
-        style.colors[ionId] ??
+        style.colors[firstRow.ionId] ??
         defaultTraceColors[index % defaultTraceColors.length] ??
         fallbackColors[index % fallbackColors.length];
       const xValues = sortedRows.map((row) =>
         getPlotXValue(getAxisRawValue(row, axis), xValueMultiplier),
       );
       const yValues = sortedRows.map((row) =>
-        yMode === "absolute" ? row.absoluteIntensity : row.relativeIntensity,
+        plotYValue(row, yMode),
       );
       const name = traceName(firstRow.targetMz, firstRow.label);
+      if (style.curveMode === "movingAverage") {
+        const common = {
+          x: xValues, type: "scatter" as const, name, legendgroup: groupId,
+          text: sortedRows.map(row => row.filename),
+          marker: { size: style.markerSize, color },
+          line: { width: style.lineWidth, color, shape: "linear" as const },
+        };
+        return [
+          { ...common, y: movingAverageValues(yValues, style.movingAverageWindow ?? 5), mode: "lines",
+            hovertemplate: "%{text}<br>x=%{x}<br>moving average=%{y}<extra>%{fullData.name}</extra>", showlegend: showLegend },
+          { ...common, y: yValues, mode: "markers",
+            hovertemplate: "%{text}<br>x=%{x}<br>measured intensity=%{y}<extra>%{fullData.name}</extra>", showlegend: false },
+        ];
+      }
       const numericXValues = xValues.every(
         (value): value is number => typeof value === "number",
       )

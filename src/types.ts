@@ -33,7 +33,10 @@ export type SpectrumFile = {
     startSeconds: number;
     endSeconds: number;
     scanCount: number;
-    method: "nominal-mz-observed-mean" | "exact-mz-window-observed-mean";
+    method: "nominal-mz-observed-mean" | "exact-mz-window-observed-mean" | "rounded-mz-observed-mean";
+    mzDecimals?: number;
+    intervalSeconds?: number;
+    runId?: string;
   };
 };
 
@@ -56,10 +59,12 @@ export type ProcessedRow = {
   filename: string;
   metadata: SpectrumMetadata;
   targetMz: number;
+  seriesId?: string;
   foundMz: number | null;
   label: string;
   absoluteIntensity: number;
   relativeIntensity: number;
+  selectedIonPercent: number;
   warning: string;
 };
 
@@ -72,7 +77,7 @@ export type XAxisKey =
   | "wavelength"
   | "replicate";
 
-export type YMode = "absolute" | "relative";
+export type YMode = "absolute" | "relative" | "selectedSum";
 
 export type LegendPosition = "right" | "top" | "bottom" | "inside";
 
@@ -94,7 +99,7 @@ export const metadataFields: Array<{
   label: string;
   placeholder?: string;
 }> = [
-  { key: "retentionTime", label: "Acquisition time (s)", placeholder: "Segment midpoint" },
+  { key: "retentionTime", label: "Acquisition time (s)", placeholder: "Segment plot time" },
   { key: "segment", label: "Segment" },
   { key: "compound", label: "Compound", placeholder: "riboflavin" },
   { key: "parentIon", label: "Parent ion", placeholder: "457" },
@@ -119,8 +124,13 @@ export const xAxisOptions: Array<{ key: XAxisKey; label: string }> = [
 
 export const yModeOptions: Array<{ key: YMode; label: string }> = [
   { key: "absolute", label: "Absolute intensity" },
-  { key: "relative", label: "Relative intensity (%)" },
+  { key: "selectedSum", label: "Share of selected ions per segment (%)" },
+  { key: "relative", label: "Each ion's own maximum = 100%" },
 ];
+
+export const plotYValue = (row: ProcessedRow, mode: YMode): number =>
+  mode === "absolute" ? row.absoluteIntensity
+    : mode === "selectedSum" ? row.selectedIonPercent : row.relativeIntensity;
 
 export const emptyMetadata = (): SpectrumMetadata => ({
   retentionTime: "",

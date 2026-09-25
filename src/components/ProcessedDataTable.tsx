@@ -55,7 +55,8 @@ export function ProcessedDataTable({ rows }: ProcessedDataTableProps) {
               <th>Found m/z</th>
               <th>Label</th>
               <th>Absolute intensity</th>
-              <th>Relative intensity</th>
+              <th>Own maximum (%)</th>
+              <th>Share of selected ions (%)</th>
               <th>Warning</th>
               <th>Acquisition time (s)</th>
               <th>Segment</th>
@@ -64,7 +65,7 @@ export function ProcessedDataTable({ rows }: ProcessedDataTableProps) {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={17} className="empty-cell">
+                <td colSpan={18} className="empty-cell">
                   No processed rows
                 </td>
               </tr>
@@ -89,6 +90,7 @@ export function ProcessedDataTable({ rows }: ProcessedDataTableProps) {
                   <td>{row.label}</td>
                   <td>{formatIntensity(row.absoluteIntensity)}</td>
                   <td>{formatPercent(row.relativeIntensity)}%</td>
+                  <td>{formatPercent(row.selectedIonPercent)}%</td>
                   <td>
                     {row.warning ? (
                       <span className="status-pill warning">{row.warning}</span>

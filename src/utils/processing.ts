@@ -4,6 +4,7 @@ import type {
   ProcessedRow,
   SpectrumFile,
 } from "../types";
+import { roundMass } from "./bruker";
 
 export type ExtractedIonIntensity = {
   foundMz: number | null;
@@ -41,11 +42,13 @@ export const extractIonIntensity = (
 };
 
 export const normalizeIntensities = (
-  rows: Omit<ProcessedRow, "relativeIntensity">[],
+  rows: Omit<ProcessedRow, "relativeIntensity" | "selectedIonPercent">[],
 ): ProcessedRow[] => {
   const maxByIon = new Map<string, number>();
+  const sumByFile = new Map<string, number>();
 
   rows.forEach((row) => {
+    sumByFile.set(row.fileId, (sumByFile.get(row.fileId) ?? 0) + row.absoluteIntensity);
     const currentMax = maxByIon.get(row.ionId) ?? 0;
     if (row.absoluteIntensity > currentMax) {
       maxByIon.set(row.ionId, row.absoluteIntensity);
@@ -60,21 +63,24 @@ export const normalizeIntensities = (
     return {
       ...row,
       relativeIntensity,
+      selectedIonPercent: (sumByFile.get(row.fileId) ?? 0) > 0
+        ? 100 * row.absoluteIntensity / sumByFile.get(row.fileId)! : 0,
     };
   });
 };
 
 export const extractBrukerIntensity = (
-  peaks: Peak[], targetMz: number, tolerance: number,
+  peaks: Peak[], targetMz: number, tolerance: number, decimals?: number,
 ): ExtractedIonIntensity => {
   let count = 0;
   let intensitySum = 0;
   let mzSum = 0;
   for (const peak of peaks) {
-    if (Math.abs(peak.mz - targetMz) <= Math.max(0, tolerance)) {
+    const mass = decimals === undefined ? peak.mz : roundMass(peak.mz, decimals);
+    if (decimals === undefined ? Math.abs(mass - targetMz) <= Math.max(0, tolerance) : mass === roundMass(targetMz, decimals)) {
       count++;
       intensitySum += peak.intensity;
-      mzSum += peak.mz;
+      mzSum += mass;
     }
   }
   return count ? { foundMz: mzSum / count, intensity: intensitySum / count, warning: "" }
@@ -88,8 +94,8 @@ export const processSpectra = (
 ): ProcessedRow[] => {
   const rows = files.flatMap((file) =>
     ions.map((ion) => {
-      const extraction = file.bruker?.method === "exact-mz-window-observed-mean"
-        ? extractBrukerIntensity(file.peaks, ion.targetMz, tolerance)
+      const extraction = file.bruker?.method === "exact-mz-window-observed-mean" || file.bruker?.method === "rounded-mz-observed-mean"
+        ? extractBrukerIntensity(file.peaks, ion.targetMz, tolerance, file.bruker.mzDecimals)
         : extractIonIntensity(file.peaks, ion.targetMz, tolerance);
       const fileWarning = file.peaks.length === 0 ? "File has no valid data" : "";
       const warning = [fileWarning || extraction.warning, ...file.warnings].filter(Boolean).join("; ");
@@ -99,6 +105,7 @@ export const processSpectra = (
         fileId: file.id,
         ionId: ion.id,
         filename: file.filename,
+        ...(file.bruker ? { seriesId: file.bruker.runId ?? file.bruker.source } : {}),
         metadata: file.metadata,
         targetMz: ion.targetMz,
         foundMz: extraction.foundMz,

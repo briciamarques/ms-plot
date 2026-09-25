@@ -15,11 +15,11 @@ for (const name of ['types', 'utils/id', 'utils/filenameMetadata', 'utils/bruker
   fs.writeFileSync(target, result);
 }
 const load = name => import(pathToFileURL(path.join(output, `utils/${name}.mjs`)));
-const { parseBrukerExport, findBrukerFiles } = await load('bruker');
+const { parseBrukerExport, findBrukerFiles, roundMass } = await load('bruker');
 const { createProjectSnapshot, parseProjectSnapshot } = await load('project');
-const { processSpectra, extractBrukerIntensity } = await load('processing');
+const { processSpectra, extractBrukerIntensity, normalizeIntensities } = await load('processing');
 const { plotRowsToCsv, processedRowsToCsv } = await load('csv');
-const { buildPlotData } = await load('plot');
+const { buildPlotData, movingAverageValues } = await load('plot');
 const { formatMz, formatIntensity } = await load('format');
 assert.equal(formatMz(100.1234567), '100.1234567');
 assert.equal(formatIntensity(12.3456789), '12.3456789');
@@ -73,12 +73,69 @@ assert.match(legacyFile.warnings.join(' '), /Reimport/);
 assert.equal(processSpectra([legacyFile], [{id:'legacy',targetMz:100,label:''}], 0.5)[0].absoluteIntensity, 30);
 const rows = processSpectra(reopened.files, [{ ...ions[0], targetMz: 100 }], 0.5);
 const csv = plotRowsToCsv(rows.slice(0,1), 'retentionTime', 'relative', 2, 'Acquisition time (scaled s)');
-assert.match(csv, /Acquisition time \(scaled s\),30,Relative intensity \(%\),33\.333/);
+assert.match(csv, /Acquisition time \(scaled s\),30,Each ion's own maximum = 100%,33\.333/);
 const txt = plotRowsToCsv(rows, 'retentionTime', 'absolute', 1, undefined, '\t');
 assert.match(txt, /Acquisition time\t15\tAbsolute intensity\t30/);
-assert.match(processedRowsToCsv(rows), /acquisition time midpoint \(s\),segment,notes/);
+assert.match(processedRowsToCsv(rows), /acquisition time \(s\),segment,notes/);
 assert.equal(buildPlotData(rows, 'retentionTime', 'absolute', true, { colors: {}, lineWidth: 2, markerSize: 5, lineShape: 'linear', curveMode: 'connect', polynomialDegree: 3 })[0].x[0], 15);
+// Distinguish within-segment abundance from each ion's temporal maximum.
+const basis = rows[0];
+const normalized = normalizeIntensities([
+ {...basis, fileId:'a', ionId:'major', absoluteIntensity:90},
+ {...basis, fileId:'a', ionId:'minor', absoluteIntensity:10},
+ {...basis, fileId:'b', ionId:'major', absoluteIntensity:20},
+ {...basis, fileId:'b', ionId:'minor', absoluteIntensity:80},
+ {...basis, fileId:'empty', ionId:'major', absoluteIntensity:0},
+]);
+assert.deepEqual(normalized.map(r=>r.selectedIonPercent), [90,10,20,80,0]);
+assert.deepEqual(normalized.map(r=>r.absoluteIntensity), [90,10,20,80,0]);
+assert.equal(normalized[0].relativeIntensity, 100);
+assert.equal(normalized[3].relativeIntensity, 100);
+assert.equal(normalized[1].relativeIntensity, 12.5);
+assert.equal(normalizeIntensities(normalized.slice(0,2))[1].selectedIonPercent, 10);
+const abundancePlot = buildPlotData(normalized.slice(0,4), 'retentionTime', 'selectedSum', true, {colors:{},lineWidth:2,markerSize:5,lineShape:'linear',curveMode:'connect',polynomialDegree:3}, 1/60);
+assert.deepEqual(abundancePlot[0].y,[90,20]);
+assert.equal(abundancePlot[0].x[0], Number(basis.metadata.retentionTime)/60);
+assert.match(plotRowsToCsv(normalized.slice(0,1), 'retentionTime', 'selectedSum', 1/60, 'Time (min)'), /Time \(min\),0.25,Share of selected ions per segment \(%\),90/);
+assert.match(plotRowsToCsv(normalized.slice(0,1), 'retentionTime', 'selectedSum', 1/60, 'Time (min)', '\t'), /Time \(min\)\t0.25\tShare of selected ions per segment \(%\)\t90/);
+project.plotSettings.yMode = 'selectedSum';
+project.plotSettings.xValueScale = 'secondsToMinutes';
+project.plotSettings.xValueMultiplier = 1/60;
+assert.deepEqual(parseProjectSnapshot(JSON.stringify(project)).plotSettings, project.plotSettings);
 console.log('PASS: boundaries, units, decimal preservation and tolerance-based averaging, gaps, corrupt input, file discovery, project round trip, legacy projects and CSV/TXT exports.');
+
+assert.equal(roundMass(100.5, 0), 100);
+assert.equal(roundMass(101.5, 0), 102);
+assert.equal(roundMass(100.1234, 2), 100.12);
+const fixed = parseBrukerExport(ascii, '4\n1 0 30\n2 30 60', 'fixed', 'min', 's', {mzDecimals:0, intervalSeconds:30});
+assert.deepEqual(fixed.files.map(f=>f.metadata.retentionTime), ['0','30','60']);
+assert.deepEqual(fixed.files.map(f=>f.bruker.scanCount), [2,1,1]);
+assert.equal(fixed.files[0].peaks[0].mz, 100.4);
+const fixedRows = processSpectra(fixed.files, [{id:'ion',targetMz:100,label:''}], 0);
+assert.deepEqual(fixedRows.map(r=>r.absoluteIntensity), [30,80,100]);
+assert.deepEqual(fixedRows.map(r=>r.foundMz), [100,100,100]);
+assert.throws(()=>parseBrukerExport(ascii, '4\n1 0 60', 'bad', 'min', 's', {intervalSeconds:0}), /positive/);
+assert.throws(()=>parseBrukerExport(ascii, '4\n1 0 60', 'bad', 'min', 's', {mzDecimals:1.5}), /0–6/);
+assert.deepEqual(movingAverageValues([0,6,24,0,10,2,0], 5), [0,10,8,8.4,7.2,4,0]);
+assert.deepEqual(movingAverageValues([2,6], 5), [2,6]);
+assert.throws(()=>movingAverageValues([1,2],4), /odd/);
+const smoothStyle = {colors:{},lineWidth:2,markerSize:5,lineShape:'linear',curveMode:'movingAverage',polynomialDegree:3,movingAverageWindow:5};
+const smoothTraces = buildPlotData(fixedRows,'retentionTime','absolute',true,smoothStyle,1/60);
+assert.deepEqual(smoothTraces[0].y, [30,70,100]);
+assert.deepEqual(smoothTraces[1].y, [30,80,100]);
+assert.deepEqual(smoothTraces[0].x, [0,.5,1]);
+assert.equal(smoothTraces[0].legendgroup, smoothTraces[1].legendgroup);
+assert.deepEqual(buildPlotData([...fixedRows,...fixedRows.map(r=>({...r,id:r.id+'b',seriesId:'second',absoluteIntensity:200}))],'retentionTime','absolute',true,smoothStyle).map(t=>t.y), [[30,70,100],[30,80,100],[200,200,200],[200,200,200]]);
+const smoothCsv = plotRowsToCsv(fixedRows,'retentionTime','absolute',1/60,'Time (min)',',',5);
+assert.match(smoothCsv,/smoothing,smoothed plot y value/);
+assert.match(smoothCsv.split('\n')[2],/^Time \(min\),0.5,Absolute intensity,80,/);
+assert.ok(smoothCsv.split('\n')[2].endsWith(',70'));
+const smoothProject = createProjectSnapshot('smoothing',fixed.files,ions,0,[]);
+smoothProject.plotSettings={curveMode:'movingAverage',movingAverageWindow:5,yMode:'selectedSum'};
+const restoredSmooth = parseProjectSnapshot(JSON.stringify(smoothProject));
+assert.deepEqual(restoredSmooth.files,fixed.files);
+assert.deepEqual(restoredSmooth.plotSettings,smoothProject.plotSettings);
+console.log('PASS: optional rounding, fixed time bins, partial final bin, moving average endpoints, separate runs, measured/smoothed export and saved settings.');
 
 // Optional local validation: never copy real spectra into this repository.
 if (process.argv[2]) {
@@ -89,4 +146,30 @@ if (process.argv[2]) {
   const roundTrip = parseProjectSnapshot(JSON.stringify(createProjectSnapshot('local validation', real.files, ions, 0.5, [])));
   assert.deepEqual(roundTrip.files, real.files);
   console.log(JSON.stringify({ segments: real.files.length, scans: real.totalScans, assigned: real.assignedScans, warnings: real.warnings }, null, 2));
+  if (process.argv[3]) {
+    const origin = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+    const nominal = parseBrukerExport(fs.readFileSync(path.join(folder,'data.ascii'),'utf8'), fs.readFileSync(path.join(folder,'Segments.txt'),'utf8'), 'Origin comparison', 'min','s',{mzDecimals:0,intervalSeconds:30});
+    const rawMasses = [255,241,283,311,375,617,751,163,271];
+    const smoothMasses = [241,255,751,311,617,375,163,271];
+    const measured = processSpectra(nominal.files,rawMasses.map(m=>({id:String(m),targetMz:m,label:''})),0);
+    const traces = buildPlotData(measured,'retentionTime','selectedSum',true,smoothStyle,1/60);
+    let rawError=0, smoothError=0;
+    assert.equal(nominal.assignedScans,nominal.totalScans);
+    assert.deepEqual(nominal.files.map(f=>Number(f.metadata.retentionTime)/60),origin.columns[0].data);
+    rawMasses.forEach((mass,c)=>{
+      const actual=measured.filter(r=>r.targetMz===mass).map(r=>r.selectedIonPercent);
+      const expected=origin.columns[c+1].data;
+      assert.equal(actual.length,expected.length);
+      actual.forEach((v,i)=>{rawError=Math.max(rawError,Math.abs(v-expected[i]));});
+    });
+    smoothMasses.forEach((mass,c)=>{
+      const trace=traces.find(t=>t.name===`<i>m/z</i> ${mass}`&&t.mode==='lines');
+      const expected=origin.columns[c+10].data;
+      assert.equal(trace.y.length,expected.length);
+      trace.y.forEach((v,i)=>{smoothError=Math.max(smoothError,Math.abs(v-expected[i]));});
+    });
+    assert.ok(rawError<1e-9,`raw mismatch ${rawError}`);
+    assert.ok(smoothError<1e-9,`smoothing mismatch ${smoothError}`);
+    console.log(JSON.stringify({originRawValues:279,originSmoothedValues:248,rawMaxError:rawError,smoothedMaxError:smoothError}));
+  }
 }

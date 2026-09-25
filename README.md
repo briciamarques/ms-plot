@@ -35,8 +35,26 @@ React + TypeScript + Vite app for building ion intensity plots from multiple mas
 
 ### Calculation and boundaries
 
-The importer retains the exported m/z and intensity values for every assigned peak,
-without rounding masses or merging them into integer bins. It uses JavaScript
+Plot normalization is explicit in the y-axis menu:
+
+- **Absolute intensity**: the extracted values, without normalization.
+- **Share of selected ions per segment (%)**: `100 * I / sum(I)` within each
+  file/segment, using all targets in the Ions panel. Nonzero segments sum to 100%.
+  An all-zero segment is represented by zeros. Changing the ion list changes this
+  denominator; hiding a legend trace does not. Use distinct, non-overlapping ion
+  windows when interpreting this as a composition.
+- **Each ion's own maximum = 100%**: the existing normalization across plotted
+  files, retained for compatibility with saved projects. It compares temporal
+  profiles and does not represent the abundance of one ion relative to another.
+
+CSV/TXT includes both normalization columns and exports the selected y mode as
+the plot y value. Choose **s to min** under x value scale to convert acquisition
+seconds into minutes. This changes x values and the unit label, without changing
+the stored acquisition times. Neither mode establishes equivalence to a published
+figure without confirming that figure's extraction and normalization method.
+
+The importer retains the exported m/z and intensity values for every assigned peak.
+The default extraction does not round masses. It uses JavaScript
 64-bit numbers; it cannot restore precision already removed by the export method.
 For each target, it averages all observed peak intensities within the selected
 m/z tolerance, across the segment. Found m/z is the arithmetic mean of the matched
@@ -49,7 +67,7 @@ to original precision. Acquisition times are never used as activation times.
 Projects from the earlier nominal-mass importer still open with their original
 calculation and show a reimport warning; their lost decimals cannot be reconstructed.
 
-Unlike the Python script's fixed intervals, this importer uses `Segments.txt`.
+By default, this importer uses `Segments.txt`.
 Intervals are start-inclusive/end-exclusive, except the last endpoint is included.
 Overlapping intervals and corrupt scans are rejected. Empty segments, count
 mismatches, non-ESI-ms1 scans and scans in gaps or beyond boundaries are reported.
@@ -57,6 +75,36 @@ The lab's original export method truncates boundaries to integer seconds. Thus
 some scans can fall outside its intervals; they are explicitly reported and
 excluded, never silently assigned to a neighboring segment. Exporting precise
 boundaries from DataAnalysis is preferable where available.
+
+### Optional approximation and Origin preset
+
+In **Bruker files**, choose original precision or 0–6 decimal places for m/z.
+Rounded extraction groups both peaks and targets into the same rounded-mass bin,
+ignoring target tolerance, and averages observed peak intensities in that bin.
+Intensities are never rounded; raw peak decimals remain in the saved project.
+Exact half-way mass ties round to the even bin. Do not enter multiple targets
+that round to the same bin: each selected target contributes to the denominator.
+
+Time segmentation can use exported boundaries (midpoint time) or fixed intervals
+starting at zero (start time). Fixed intervals include all valid ESI ms1 scans,
+including a partial last interval, matching the old Python workflow. Changing
+segmentation after import requires reimporting the exports.
+
+**Use Riboflavin Origin preset** applies the procedure verified against the supplied
+Origin project: integer masses, 30-second intervals, nine ions (241, 255, 751, 311,
+617, 375, 163, 271, 283), percentage of their sum at each interval, minutes on x,
+and a centered five-point moving average. It replaces the ion list and plot
+settings when adding the import, and selects only that run for plotting. The
+283 ion belongs in the normalization denominator even when its curve is hidden.
+This is a sample-specific preset, not a universal published-figure convention.
+
+Under **Plot → Style → Curve**, moving average is selectable with an odd window
+of 3–31 points. At endpoints, the window shrinks symmetrically (5 points becomes
+1, 3, 5, …, 5, 3, 1). Dots show unsmoothed measurements; lines show the average.
+Each imported run is smoothed separately, after normalization, in x order.
+This is a point-count window rather than a fixed duration. It is not a kinetic fit.
+Plot CSV/TXT includes measured y and a separate smoothed y column with the method.
+Projects preserve extraction options, normalization, smoothing, colors and axes.
 
 `scripts/Bruker_export_precise.vbs` contains replacement code for the script inside
 a DataAnalysis method (not a standalone Windows script). It uses the original
@@ -71,6 +119,8 @@ provides; it does not increase the exporter's own m/z precision.
 Run `node tests/bruker.mjs` for synthetic parser, boundary, unit, calculation,
 project compatibility, plot and export checks. Optionally pass a local `.d` path
 to validate its exports without copying experimental data into the repository.
+An optional second argument accepts a locally extracted Origin worksheet JSON
+for point-by-point comparison of the 279 normalized and 248 smoothed values.
 
 ## Data policy
 
