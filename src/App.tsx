@@ -6,6 +6,7 @@ import { MetadataTable } from "./components/MetadataTable";
 import { PlotBuilder } from "./components/PlotBuilder";
 import { ProjectPanel } from "./components/ProjectPanel";
 import { ProcessedDataTable } from "./components/ProcessedDataTable";
+import { SegmentSpectrumExport } from "./components/SegmentSpectrumExport";
 import type {
   IonTarget,
   MetadataField,
@@ -403,6 +404,7 @@ function App() {
           className="workspace-tab-panel"
           hidden={activeWorkspaceTab !== "data"}
         >
+          <SegmentSpectrumExport files={files} isActive={activeWorkspaceTab === "data"} />
           <ProcessedDataTable rows={processedRows} />
         </div>
       </main>

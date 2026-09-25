@@ -6,7 +6,7 @@ import ts from 'typescript';
 
 // Compile the pure processing modules with the installed compiler, without extra dependencies.
 const output = path.resolve('node_modules/.tmp/bruker-tests');
-for (const name of ['types', 'utils/id', 'utils/filenameMetadata', 'utils/bruker', 'utils/project', 'utils/processing', 'utils/csv', 'utils/plot', 'utils/format']) {
+for (const name of ['types', 'utils/id', 'utils/filenameMetadata', 'utils/bruker', 'utils/project', 'utils/processing', 'utils/csv', 'utils/plot', 'utils/format', 'utils/segmentSpectrum']) {
   const result = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ES2020 },
   }).outputText.replace(/from "(\.[^"]+)"/g, 'from "$1.mjs"');
@@ -21,6 +21,7 @@ const { processSpectra, extractBrukerIntensity, normalizeIntensities } = await l
 const { plotRowsToCsv, processedRowsToCsv } = await load('csv');
 const { buildPlotData, movingAverageValues, legendGeometry, insideLegendColumns, defaultPlotAppearance } = await load('plot');
 const { formatMz, formatIntensity } = await load('format');
+const { segmentSpectrum, spectrumToTxt, segmentSpectrumFilename } = await load('segmentSpectrum');
 assert.equal(formatMz(100.1234567), '100.1234567');
 assert.equal(formatIntensity(12.3456789), '12.3456789');
 const scan = (time, pairs, mode = 'ms1') => `${time},-,ESI,${mode},-,line,50-800,${pairs.length},${pairs.join(',')}`;
@@ -71,6 +72,28 @@ legacy.files[0].peaks = [{mz:100,intensity:30}];
 const legacyFile = parseProjectSnapshot(JSON.stringify(legacy)).files[0];
 assert.match(legacyFile.warnings.join(' '), /Reimport/);
 assert.equal(processSpectra([legacyFile], [{id:'legacy',targetMz:100,label:''}], 0.5)[0].absoluteIntensity, 30);
+// Complete segment exports must include untargeted masses and match the observed
+// peak mean used by the time plot, including repeated masses and banker's rounding.
+const spectrumFile = { ...reopened.files[0], peaks: [
+  {mz: 300.5, intensity: 12.3456789012345},
+  {mz: 100.2, intensity: 10}, {mz: 100.4, intensity: 30}, {mz: 100.2, intensity: 50},
+  {mz: 250.123456789, intensity: 0},
+] };
+const complete = segmentSpectrum(spectrumFile, 0);
+assert.deepEqual(complete, [{mz:100,intensity:30}, {mz:250,intensity:0}, {mz:300,intensity:12.3456789012345}]);
+for (const peak of complete) assert.equal(peak.intensity, extractBrukerIntensity(spectrumFile.peaks, peak.mz, 0, 0).intensity);
+assert.equal(spectrumToTxt(complete), '100\t30\n250\t0\n300\t12.3456789012345');
+assert.deepEqual(segmentSpectrum(spectrumFile), [
+  {mz:100.2,intensity:30}, {mz:100.4,intensity:30}, {mz:250.123456789,intensity:0}, {mz:300.5,intensity:12.3456789012345},
+]);
+assert.deepEqual(segmentSpectrum(precise.files[0]), precise.files[0].peaks);
+assert.deepEqual(segmentSpectrum(legacyFile, 0), legacyFile.peaks);
+assert.deepEqual(segmentSpectrum({...spectrumFile, peaks:[]}, 0), []);
+assert.equal(spectrumToTxt([]), '');
+assert.deepEqual(segmentSpectrum(reopened.files[0], 0), segmentSpectrum(result.files[0], 0));
+assert.match(segmentSpectrumFilename(spectrumFile, 0), /Synthetic_segment-1_0-30s_mz-0dp\.txt$/);
+assert.match(segmentSpectrumFilename(spectrumFile), /_mz-original\.txt$/);
+assert.equal(spectrumFile.peaks[0].mz, 300.5); // No mutation of the saved source.
 const rows = processSpectra(reopened.files, [{ ...ions[0], targetMz: 100 }], 0.5);
 const csv = plotRowsToCsv(rows.slice(0,1), 'retentionTime', 'relative', 2, 'Acquisition time (scaled s)');
 assert.match(csv, /Acquisition time \(scaled s\),30,Each ion's own maximum = 100%,33\.333/);

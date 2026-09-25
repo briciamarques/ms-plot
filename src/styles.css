@@ -1041,6 +1041,14 @@ label:has(input:disabled) {
 }
 .bruker-actions { display: flex; flex-wrap: wrap; gap: 16px; margin: 20px 0; }
 .bruker-actions > label { display: flex; flex-direction: column; gap: 8px; }
+.segment-spectrum-controls > label { min-width: 0; }
+.segment-spectrum-selector { flex: 1 1 360px; }
+.segment-spectrum-selector select { width: 100%; min-width: 0; }
+.segment-spectrum-controls select, .segment-spectrum-preview textarea { border: 1px solid var(--line-strong); border-radius: 6px; background: #fff; color: var(--text); }
+.segment-spectrum-controls select { padding: 9px 10px; }
+.segment-spectrum-help { color: #526174; line-height: 1.5; }
+.segment-spectrum-preview { display: flex; flex-direction: column; gap: 8px; }
+.segment-spectrum-preview textarea { width: 100%; padding: 12px; resize: vertical; font-family: Consolas, monospace; font-size: 13px; line-height: 1.5; }
 .bruker-help { color: #64748b; }
 .bruker-warning { padding: 16px; border: 1px solid #c0841a; border-radius: 8px; background: #fffbeb; color: #713f12; margin: 16px 0; }
 .bruker-preview { max-height: 360px; overflow: auto; margin-bottom: 20px; }

@@ -145,6 +145,24 @@ and enabled mode are saved in projects; values, normalization and CSV/TXT data
 are unchanged. With the option disabled, the normal hide/show legend behavior
 remains available. The handlers use [Plotly's click events](https://plotly.com/javascript/plotlyjs-events/).
 
+## Export a segment's mass spectrum
+
+Under **Data → Segment spectrum**, select a Bruker segment by source and time
+interval, then **Copy m/z + intensity** or **Download segment TXT**. Both produce
+the same headerless, tab-separated two-column list, sorted by m/z, ready to paste
+into a mass-spectrum plotter. All available masses are included, independently
+of target-ion selection or time-plot normalization and smoothing. Saved projects
+retain the required peaks, so reopening the original `.d` folder is unnecessary.
+
+The export initially uses the segment's mass precision. Choose original m/z or
+0–6 decimals without altering imported data. Each mass bin uses the mean of its
+observed peak intensities, matching the rounded-mass time-series calculation;
+missing observations are not zero-filled. With original m/z, only identical
+masses are grouped, so scan-to-scan mass drift remains separate. This is not a
+mass-alignment algorithm or a reconstruction of DataAnalysis's average spectrum.
+Intensity values use full stored numeric precision and absolute units. Older
+projects containing only averaged integer peaks require reimport for finer m/z.
+
 ## Data policy
 
 Do not commit real experimental `.txt` files, unpublished research results, real plots, or real processed data. The repository ignores `.txt` files by default and only allows small fictitious files in `example-data/`.
