@@ -152,9 +152,29 @@ assert.ok(bottomLegend.legend.y<0);
 assert.ok(bottomLegend.margin.b>88);
 assert.equal(legendGeometry('auto',[],1000,800,24).margin.t,32);
 assert.equal(defaultPlotAppearance.fontFamily,'Arial');
+assert.equal(defaultPlotAppearance.legendPosition,'insideTop');
+const insideLegend=legendGeometry('insideTop',names,1000,800,24,3);
+assert.equal(insideLegend.columns,3);
+assert.equal(insideLegend.legend.y,0.98);
+assert.equal(insideLegend.legend.yanchor,'top');
+assert.equal(insideLegend.margin.t,32);
+const emphasisRows = [...fixedRows,...fixedRows.map(r=>({...r,id:r.id+'other',ionId:'other',targetMz:101}))];
+for (const curveMode of ['connect','movingAverage','polynomial']) {
+  const style={...smoothStyle,curveMode,colors:{ion:'#ff0000',other:'#00bbaa'}};
+  const normal=buildPlotData(emphasisRows,'retentionTime','absolute',true,style);
+  const focused=buildPlotData(emphasisRows,'retentionTime','absolute',true,{...style,highlightedIonId:'ion'});
+  assert.deepEqual(focused.map(t=>[t.x,t.y]),normal.map(t=>[t.x,t.y]));
+  focused.forEach(t=>{
+    assert.equal(t.line.color,t.meta.ionId==='ion'?'#ff0000':'#b8b8b8');
+    assert.equal(t.marker.color,t.line.color);
+  });
+  assert.deepEqual(buildPlotData(emphasisRows,'retentionTime','absolute',true,{...style,highlightedIonId:'missing'}),normal);
+}
 project.plotSettings={...project.plotSettings,legendPosition:'auto',legendColumns:3};
+project.plotSettings.highlightOnClick=true;
+project.plotSettings.highlightedIonId='ion';
 assert.deepEqual(parseProjectSnapshot(JSON.stringify(project)).plotSettings,project.plotSettings);
-console.log('PASS: outside legend placement, column limits, reserved margins, narrow figures and persisted legend settings.');
+console.log('PASS: inside/outside legends, adaptive columns, persisted settings, and ion highlighting without changing plotted values.');
 
 // Optional local validation: never copy real spectra into this repository.
 if (process.argv[2]) {

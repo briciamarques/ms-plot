@@ -5,7 +5,7 @@ import { formatMz } from "./format";
 export const defaultPlotAppearance = {
   fontFamily: "Arial" as const, showTitle: false, titleSize: 28, axisTitleSize: 28,
   tickSize: 24, legendSize: 24, lineWidth: 2.5, markerSize: 7,
-  exportWidth: 1000, exportHeight: 800, legendPosition: "auto" as const, legendColumns: 0,
+  exportWidth: 1000, exportHeight: 800, legendPosition: "insideTop" as const, legendColumns: 0,
 };
 
 export type PlotTrace = {
@@ -20,6 +20,7 @@ export type PlotTrace = {
   line: { width: number; color: string; shape: "linear" | "spline" };
   showlegend: boolean;
   legendgroup?: string;
+  meta: { ionId: string };
 };
 
 export type TraceStyleOptions = {
@@ -36,6 +37,7 @@ export type TraceStyleOptions = {
     | "auto";
   polynomialDegree: number;
   movingAverageWindow?: number;
+  highlightedIonId?: string;
 };
 
 export const defaultTraceColors = [
@@ -583,12 +585,14 @@ export const buildPlotData = (
   xValueMultiplier = 1,
 ): PlotTrace[] => {
   const rowsByIon = groupRows(rows);
+  const highlightedIonId = rows.some(row => row.ionId === style.highlightedIonId) ? style.highlightedIonId : undefined;
 
   return Array.from(rowsByIon.entries()).flatMap<PlotTrace>(
     ([groupId, ionRows], index): PlotTrace[] => {
       const sortedRows = sortRowsByAxis(ionRows, axis);
       const firstRow = sortedRows[0];
       const color =
+        highlightedIonId && firstRow.ionId !== highlightedIonId ? "#b8b8b8" :
         style.colors[firstRow.ionId] ??
         defaultTraceColors[index % defaultTraceColors.length] ??
         fallbackColors[index % fallbackColors.length];
@@ -601,7 +605,7 @@ export const buildPlotData = (
       const name = traceName(firstRow.targetMz, firstRow.label);
       if (style.curveMode === "movingAverage") {
         const common = {
-          x: xValues, type: "scatter" as const, name, legendgroup: groupId,
+          x: xValues, type: "scatter" as const, name, legendgroup: groupId, meta: { ionId: firstRow.ionId },
           text: sortedRows.map(row => row.filename),
           marker: { size: style.markerSize, color },
           line: { width: style.lineWidth, color, shape: "linear" as const },
@@ -632,6 +636,7 @@ export const buildPlotData = (
         return [
           {
             x: fit.x,
+            meta: { ionId: firstRow.ionId }, legendgroup: groupId,
             y: fit.y,
             type: "scatter",
             mode: "lines",
@@ -650,6 +655,7 @@ export const buildPlotData = (
             y: yValues,
             type: "scatter",
             mode: "markers",
+            meta: { ionId: firstRow.ionId }, legendgroup: groupId,
             name,
             text: sortedRows.map((row) => row.filename),
             hovertemplate:
@@ -667,6 +673,7 @@ export const buildPlotData = (
           y: yValues,
           type: "scatter",
           mode: "lines+markers",
+          meta: { ionId: firstRow.ionId }, legendgroup: groupId,
           name,
           text: sortedRows.map((row) => row.filename),
           hovertemplate:
@@ -738,10 +745,16 @@ export const legendGeometry = (
   const longest = Math.max(...names.map(name => name.replace(/<[^>]*>/g, "").length));
   const entryWidth = Math.max(100, longest * fontSize * 0.65 + 70);
   if (resolved === "right") margin.r = Math.ceil(entryWidth + 24);
-  if (resolved !== "top" && resolved !== "bottom") return { legend: base, margin, columns: 1 };
+  if (resolved !== "top" && resolved !== "bottom" && resolved !== "insideTop") return { legend: base, margin, columns: 1 };
   const fittingColumns = Math.max(1, Math.floor((width - margin.l - margin.r) / entryWidth));
   const columns = Math.max(1, Math.min(names.length, fittingColumns, requestedColumns > 0 ? Math.floor(requestedColumns) : fittingColumns));
   const rows = Math.ceil(names.length / columns);
+  if (resolved === "insideTop") return {
+    legend: { orientation: "h", x: 0.02, y: 0.98, xanchor: "left", yanchor: "top",
+      traceorder: "normal", entrywidthmode: "fraction", entrywidth: 0.96 / columns,
+      bgcolor: "rgba(255,255,255,0)", borderwidth: 0 },
+    margin, columns,
+  };
   const legendHeight = Math.ceil(rows * (fontSize * 1.5 + 6));
   if (resolved === "top") margin.t += legendHeight + 12;
   else margin.b += legendHeight + 12;

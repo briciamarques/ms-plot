@@ -29,6 +29,11 @@ type PlotBuilderProps = {
 };
 
 type PlotTab = "data" | "style";
+type PlotInteraction = { curveNumber?: number; points?: Array<{ curveNumber: number }> };
+type InteractivePlotElement = HTMLDivElement & {
+  on: (event: string, handler: (event: PlotInteraction) => boolean | void) => void;
+  removeListener: (event: string, handler: (event: PlotInteraction) => boolean | void) => void;
+};
 type StyleTab =
   | "presets"
   | "curve"
@@ -66,6 +71,7 @@ type PlotStyleSettings = {
   showLegend: boolean;
   legendPosition: LegendPosition;
   legendColumns?: number;
+  highlightOnClick?: boolean;
   legendInsideX: number;
   legendInsideY: number;
   forceSingleLegend: boolean;
@@ -371,6 +377,8 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   const [showLegend, setShowLegend] = useState(() => readPlotSetting(initialSettings, "showLegend", true));
   const [legendPosition, setLegendPosition] = useState<LegendPosition>(() => readPlotSetting(initialSettings, "legendPosition", defaultPlotAppearance.legendPosition));
   const [legendColumns, setLegendColumns] = useState(() => readPlotSetting(initialSettings, "legendColumns", 0));
+  const [highlightOnClick, setHighlightOnClick] = useState(() => readPlotSetting(initialSettings, "highlightOnClick", false));
+  const [highlightedIonId, setHighlightedIonId] = useState(() => readPlotSetting(initialSettings, "highlightedIonId", ""));
   const [legendInsideX, setLegendInsideX] = useState(() => readPlotSetting(initialSettings, "legendInsideX", 0.98));
   const [legendInsideY, setLegendInsideY] = useState(() => readPlotSetting(initialSettings, "legendInsideY", 0.98));
   const [forceSingleLegend, setForceSingleLegend] = useState(() => readPlotSetting(initialSettings, "forceSingleLegend", true));
@@ -412,7 +420,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
   const [previewAreaWidth, setPreviewAreaWidth] = useState(0);
   const [previewAreaHeight, setPreviewAreaHeight] = useState(0);
 
-  useEffect(() => { settingsRef.current = { xAxis, yMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors }; });
+  useEffect(() => { settingsRef.current = { xAxis, yMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, highlightOnClick, highlightedIonId, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors }; });
 
   const shouldShowLegend =
     showLegend && (forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
@@ -447,6 +455,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
         curveMode,
         polynomialDegree,
         movingAverageWindow,
+        highlightedIonId: highlightOnClick ? highlightedIonId : undefined,
       }, xValueMultiplier),
     [
       curveMode,
@@ -455,6 +464,8 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
       markerSize,
       polynomialDegree,
       movingAverageWindow,
+      highlightOnClick,
+      highlightedIonId,
       rows,
       shouldShowLegend,
       traceColors,
@@ -660,6 +671,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
       showlegend: shouldShowLegend,
       legend: {
         ...legendSpace.legend,
+        uirevision: highlightOnClick ? "highlight" : "visibility",
         font: { size: legendSize, family: fontFamily, color: axisColor },
       },
       margin: legendSpace.margin,
@@ -674,17 +686,42 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
         color: axisColor,
       },
       hovermode: "closest",
+      uirevision: JSON.stringify([xAxis, yMode, xValueMultiplier, xMin, xMax, yMin, yMax, rows.length, rows[0]?.id, rows[rows.length - 1]?.id]),
     };
 
-    Plotly.react(plotElement, plotData, layout, {
+    let cancelled = false;
+    const interactive = plotElement as InteractivePlotElement;
+    const selectIon = (index: number | undefined) => {
+      if (index === undefined) return;
+      const ionId = plotData[index]?.meta.ionId;
+      if (ionId) setHighlightedIonId(current => current === ionId ? "" : ionId);
+    };
+    const legendClick = (event: PlotInteraction) => {
+      if (!highlightOnClick) return;
+      selectIon(event.curveNumber);
+      return false;
+    };
+    const legendDoubleClick = () => highlightOnClick ? false : undefined;
+    const pointClick = (event: PlotInteraction) => {
+      if (highlightOnClick) selectIon(event.points?.[0]?.curveNumber);
+    };
+    void Plotly.react(plotElement, plotData, layout, {
       responsive: !previewExportRatio,
       displaylogo: false,
       modeBarButtonsToRemove: ["lasso2d", "select2d"],
       scrollZoom: true,
+    }).then(() => {
+      if (cancelled) return;
+      interactive.on("plotly_legendclick", legendClick);
+      interactive.on("plotly_legenddoubleclick", legendDoubleClick);
+      interactive.on("plotly_click", pointClick);
     });
 
     return () => {
-      Plotly.purge(plotElement);
+      cancelled = true;
+      interactive.removeListener?.("plotly_legendclick", legendClick);
+      interactive.removeListener?.("plotly_legenddoubleclick", legendDoubleClick);
+      interactive.removeListener?.("plotly_click", pointClick);
     };
   }, [
     axisColor,
@@ -698,6 +735,11 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     legendInsideY,
     legendPosition,
     legendColumns,
+    highlightOnClick,
+    rows,
+    xAxis,
+    yMode,
+    xValueMultiplier,
     previewAreaWidth,
     safeExportWidth,
     legendSize,
@@ -728,6 +770,11 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     yTitle,
     yUnit,
   ]);
+
+  useEffect(() => {
+    const element = plotRef.current;
+    return () => { if (element) Plotly.purge(element); };
+  }, []);
 
   const applyPaperStyle = () => {
     setFontFamily("Arial");
@@ -767,6 +814,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     setExportHeight(defaultPlotAppearance.exportHeight);
     setLegendPosition(defaultPlotAppearance.legendPosition);
     setLegendColumns(defaultPlotAppearance.legendColumns);
+    setHighlightOnClick(false); setHighlightedIonId("");
     setShowLegend(true); setShowGrid(false); setShowAxisBox(true);
     setAxisLineWidth(2); setPreviewExportRatio(true);
     setAxisColor("#111111"); setPlotBackground("#ffffff"); setPaperBackground("#ffffff");
@@ -798,6 +846,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     showLegend,
     legendPosition,
     legendColumns,
+    highlightOnClick,
     legendInsideX,
     legendInsideY,
     forceSingleLegend,
@@ -876,6 +925,8 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
     setShowLegend(settings.showLegend);
     setLegendPosition(settings.legendPosition);
     setLegendColumns(settings.legendColumns ?? 0);
+    setHighlightOnClick(settings.highlightOnClick ?? false);
+    setHighlightedIonId("");
     setLegendInsideX(settings.legendInsideX);
     setLegendInsideY(settings.legendInsideY);
     setForceSingleLegend(settings.forceSingleLegend);
@@ -1611,6 +1662,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
                     setLegendPosition(event.target.value as LegendPosition)
                   }
                 >
+                  <option value="insideTop">Inside · top (default)</option>
                   <option value="auto">Automatic · outside curves</option>
                   <option value="right">Right</option>
                   <option value="top">Top</option>
@@ -1619,7 +1671,7 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
                 </select>
               </label>
 
-              {(legendPosition === "auto" || legendPosition === "top" || legendPosition === "bottom") && <label>
+              {(legendPosition === "insideTop" || legendPosition === "auto" || legendPosition === "top" || legendPosition === "bottom") && <label>
                 <span>Legend columns</span>
                 <select value={legendColumns} onChange={event => setLegendColumns(Number(event.target.value))}>
                   <option value="0">Automatic</option>
@@ -1648,7 +1700,14 @@ export function PlotBuilder({ rows, isActive = true, initialSettings = {}, setti
               </label>
             </div>
 
-            <p className="fit-guidance">Automatic places the legend above the axes with space reserved for every row. Columns adapt to the figure width and label length; your selection is the maximum. Inside is a manual position and may overlap curves.</p>
+            <p className="fit-guidance">Inside · top places the legend within the upper part of the axes. Columns adapt to the available width; your selection is the maximum. You can also choose an outside position or move it manually with Inside.</p>
+            <label className="checkbox-label"><input type="checkbox" checked={highlightOnClick} onChange={event => {
+              setHighlightOnClick(event.target.checked); setHighlightedIonId("");
+            }} /><span>Highlight one m/z on click</span></label>
+            {highlightOnClick && <>
+              <p className="fit-guidance">Click an m/z in the legend or a plotted point to keep its color and turn the others gray. Click it again to restore all colors. Values and normalization stay the same.</p>
+              <button type="button" className="secondary-button" disabled={!highlightedIonId} onClick={() => setHighlightedIonId("")}>Restore all colors</button>
+            </>}
             {legendPosition === "inside" ? (
               <div className="inside-legend-controls">
                 <label>
