@@ -238,6 +238,72 @@ For the real Plotly cleanup regression, open `/tests/browser/plot-cleanup.html`
 in the Vite dev server. It reproduces the old selector failure, then verifies
 that removing ions and purging the graph succeed with the corrected identifiers.
 
+## Thermo RAW and replicate plots
+
+**Thermo RAW** imports a batch of Thermo `.raw` files through a local reader.
+On Windows, install ProteoWizard with Thermo/vendor reader support. Build this
+app, then run `python scripts/thermo_server.py` and open
+`http://127.0.0.1:8765` **on that computer**. The local reader serves the built
+site and the `/api/thermo` endpoints. It discovers ProteoWizard under Program
+Files; alternatively pass `--msconvert` or set `MSCONVERT_PATH`. Vite development
+proxies these endpoints to the same reader. No new Python packages are required.
+
+A static hosted copy still supports TXT, Bruker exports and saved projects,
+but direct RAW import requires this reader. This change does not deploy a public
+RAW service. The reader binds only to loopback, rejects foreign origins and host
+names, processes one conversion at a time and removes temporary RAW/mzML files.
+The file limit is 512 MB and conversion timeout is 180 seconds. To host it later,
+use a reviewed authenticated same-origin service; do not expose this development
+HTTP server directly to the internet. ProteoWizard/vendor licensing applies.
+
+Select all replicates, review the import preview and choose a spectrum type if
+an acquisition contains multiple types. Different filter strings, precursors,
+polarities and profile/centroid modes remain separate. Duplicate RAW content is
+rejected even if renamed. Files with errors are reported individually while
+successful files remain in the preview.
+
+The filename parser recognizes compound, concentration, `457mz`, `act_1s`,
+`LED_ON`/`LED_OFF`, current (`mA`, `uA`, `A`), voltage (`V`, `mV`, `kV`), and
+replicates such as `rep1` or the final `_1` of an LED filename. Current is stored
+in mA and voltage in V. An attachment prefix such as `9-` is not a replicate.
+`365LED` alone is not silently interpreted as a calibrated wavelength; enter
+`365 nm` in the wavelength metadata when appropriate. LED OFF has no assumed
+current. Activation duration is not used as acquisition time.
+
+Extraction uses the **maximum intensity within the target tolerance per scan,
+then the mean over every scan of the selected spectrum type**. A scan without
+positive signal contributes zero and produces a warning. Zero profile samples
+are omitted from storage, while every scan is retained. This is a peak-height
+method, not integrated area, centroiding, or the Bruker observed-peak mean.
+Original positive masses and intensities remain available so changing ions or
+tolerance recalculates extraction. Project JSON retains the scans and metadata;
+reopening it does not require RAW files or the reader.
+
+Under **Plot → Data → Replicates**, choose individual files, **Mean ± sample SD**,
+or **Mean ± SEM**. One file is one replicate. Groups match the selected x value,
+ion, spectrum type and all other metadata except replicate and notes. Use
+**Experiment group** to separate batches. Missing/repeated replicate IDs exclude
+the ambiguous group with a warning. A single replicate has no estimated error
+bar. Sample SD uses n−1; SEM = SD/√n. Normalize individual file values first,
+then average those values; error bars use the same plotted units. Errors are
+attached only to measured points, including when fitted/smoothed curves appear.
+Automatic y ranges include error-bar endpoints; manually entered bounds remain
+exact. Plot CSV/TXT exports the means, n, SD, SEM and source filenames. The Data
+tab retains individual results, including references without a numeric current
+or voltage. References without a numeric x value are excluded from that numeric
+plot and its own-maximum normalization. No blank subtraction is implied.
+
+The desktop workspace fits the viewport. Its panels scroll internally. Project
+save/open controls expand from the compact Project bar. The plot preview always
+preserves the selected export aspect ratio and scales down to available space;
+a large export does not enlarge the page. Old projects with preview matching
+disabled now use the same proportional preview.
+
+Validation: `npm test`, `npm run build`, and `python tests/thermo_reader.py`.
+Optionally pass the local directory of the 15 supplied test RAWs to the Python
+test to validate all 150 spectra. Those experimental files/results are ignored
+by Git and are not included in the site.
+
 ## Data policy
 
 Do not commit real experimental `.txt` files, unpublished research results, real plots, or real processed data. The repository ignores `.txt` files by default and only allows small fictitious files in `example-data/`.

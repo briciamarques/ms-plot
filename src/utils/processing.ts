@@ -94,7 +94,8 @@ export const processSpectra = (
 ): ProcessedRow[] => {
   const rows = files.flatMap((file) =>
     ions.map((ion) => {
-      const extraction = file.bruker?.method === "exact-mz-window-observed-mean" || file.bruker?.method === "rounded-mz-observed-mean"
+      const extraction = file.thermo ? extractThermoIntensity(file, ion.targetMz, tolerance)
+        : file.bruker?.method === "exact-mz-window-observed-mean" || file.bruker?.method === "rounded-mz-observed-mean"
         ? extractBrukerIntensity(file.peaks, ion.targetMz, tolerance, file.bruker.mzDecimals)
         : extractIonIntensity(file.peaks, ion.targetMz, tolerance);
       const fileWarning = file.peaks.length === 0 ? "File has no valid data" : "";
@@ -106,6 +107,8 @@ export const processSpectra = (
         ionId: ion.id,
         filename: file.filename,
         ...(file.bruker ? { seriesId: file.bruker.runId ?? file.bruker.source } : {}),
+        ...(file.thermo ? { acquisitionKey: file.thermo.channel,
+          seriesId: JSON.stringify([file.thermo.channel, file.metadata.compound, file.metadata.concentration, file.metadata.condition, file.metadata.experiment, file.metadata.replicate]) } : {}),
         metadata: file.metadata,
         targetMz: ion.targetMz,
         foundMz: extraction.foundMz,
@@ -118,3 +121,15 @@ export const processSpectra = (
 
   return normalizeIntensities(rows);
 };
+
+export function extractThermoIntensity(file: SpectrumFile, targetMz: number, tolerance: number): ExtractedIonIntensity {
+  const scans = file.thermo!.scans;
+  if (!scans.length) return { foundMz: null, intensity: 0, warning: "No scans" };
+  const extracted = scans.map(scan => extractIonIntensity(scan.peaks, targetMz, tolerance));
+  const found = extracted.filter(value => value.foundMz !== null && value.intensity > 0);
+  return {
+    foundMz: found.length ? found.reduce((sum, value) => sum + value.foundMz!, 0) / found.length : null,
+    intensity: extracted.reduce((sum, value) => sum + value.intensity, 0) / scans.length,
+    warning: found.length < scans.length ? `${scans.length - found.length}/${scans.length} scans without positive signal in the target window; included as zero` : "",
+  };
+}

@@ -46,6 +46,7 @@ export function ProcessedDataTable({ rows }: ProcessedDataTableProps) {
               <th>Compound</th>
               <th>Parent ion</th>
               <th>Condition</th>
+              <th>Current (mA)</th><th>Voltage (V)</th>
               <th>Act. Time (ms)</th>
               <th>Activation time</th>
               <th>LED power</th>
@@ -80,6 +81,7 @@ export function ProcessedDataTable({ rows }: ProcessedDataTableProps) {
                   <td>{row.metadata.compound}</td>
                   <td>{row.metadata.parentIon}</td>
                   <td>{row.metadata.condition}</td>
+                  <td>{row.metadata.current}</td><td>{row.metadata.voltage}</td>
                   <td>{row.metadata.acqTime}</td>
                   <td>{row.metadata.activationTime}</td>
                   <td>{row.metadata.ledPower}</td>

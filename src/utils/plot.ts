@@ -37,6 +37,7 @@ export type PlotTrace = {
   legendrank?: number;
   uid?: string;
   legend?: string;
+  error_y?: { type: "data"; array: Array<number | null>; visible: boolean; color: string; thickness: number; width: number };
 };
 
 export type TraceStyleOptions = {
@@ -55,6 +56,7 @@ export type TraceStyleOptions = {
   polynomialDegree: number;
   movingAverageWindow?: number;
   highlightedIonId?: string;
+  replicateMode?: "individual" | "sd" | "sem";
 };
 
 export const defaultTraceColors = trmsColors;
@@ -73,6 +75,8 @@ const getSortableNumber = (value: string): number | null => {
 };
 
 export const rowsForPlotAxis = (rows: ProcessedRow[], axis: XAxisKey): ProcessedRow[] => {
+  if (rows.some(row => row.statistics)) return rows;
+  if (axis === "current" || axis === "voltage") return normalizeIntensities(rows.filter(row => row.metadata[axis].trim() !== "" && Number.isFinite(Number(row.metadata[axis]))));
   if (axis !== "wavelength") return rows;
   // References have no wavelength. Keep them in the project, but exclude them
   // from wavelength coordinates and from the plotted ions' own-maximum scale.
@@ -611,17 +615,21 @@ export const buildPlotData = (
         plotYValue(row, yMode),
       );
       const name = traceName(firstRow.targetMz, firstRow.label);
+      const errorBars = style.replicateMode && style.replicateMode !== "individual" ? {
+        error_y: { type: "data" as const, array: sortedRows.map(row => row.statistics?.[style.replicateMode === "sem" ? "sem" : "sd"] ?? null), visible: true, color, thickness: Math.max(1, style.lineWidth / 2), width: 4 },
+      } : {};
+      const pointText = sortedRows.map(row => row.statistics ? `${row.metadata.condition}; n=${row.statistics.n}; ${style.replicateMode?.toUpperCase()}=${row.statistics[style.replicateMode === "sem" ? "sem" : "sd"] ?? "unavailable"}<br>${row.filename}` : row.filename);
       if (style.curveMode === "movingAverage") {
         const common = {
           x: xValues, type: "scatter" as const, name, legendgroup: groupId, meta: { ionId: firstRow.ionId },
-          text: sortedRows.map(row => row.filename),
+          text: pointText,
           marker: { size: style.markerSize, color },
           line: { width: style.lineWidth, color, shape: "linear" as const },
         };
         return [
           { ...common, y: movingAverageValues(yValues, style.movingAverageWindow ?? 5), mode: "lines",
             hovertemplate: "%{text}<br>x=%{x}<br>moving average=%{y}<extra>%{fullData.name}</extra>", showlegend: showLegend },
-          { ...common, y: yValues, mode: "markers",
+          { ...common, ...errorBars, y: yValues, mode: "markers",
             hovertemplate: "%{text}<br>x=%{x}<br>measured intensity=%{y}<extra>%{fullData.name}</extra>", showlegend: false },
         ];
       }
@@ -663,9 +671,10 @@ export const buildPlotData = (
             y: yValues,
             type: "scatter",
             mode: "markers",
+            ...errorBars,
             meta: { ionId: firstRow.ionId }, legendgroup: groupId,
             name,
-            text: sortedRows.map((row) => row.filename),
+            text: pointText,
             hovertemplate:
               "%{text}<br>x=%{x}<br>intensity=%{y:.4g}<extra>%{fullData.name}</extra>",
             marker: { size: style.markerSize, color },
@@ -681,9 +690,10 @@ export const buildPlotData = (
           y: yValues,
           type: "scatter",
           mode: "lines+markers",
+          ...errorBars,
           meta: { ionId: firstRow.ionId }, legendgroup: groupId,
           name,
-          text: sortedRows.map((row) => row.filename),
+          text: pointText,
           hovertemplate:
             "%{text}<br>x=%{x}<br>intensity=%{y:.4g}<extra>%{fullData.name}</extra>",
           marker: { size: style.markerSize, color },

@@ -5,6 +5,8 @@ import type { LegendPosition, ProcessedRow, XAxisKey, YMode } from "../types";
 import { xAxisOptions, yModeOptions } from "../types";
 import { downloadTextFile, plotRowsToCsv } from "../utils/csv";
 import { queuePlotTask } from "../utils/plotLifecycle";
+import { aggregateReplicates, type ReplicateMode } from "../utils/replicates";
+import { fitExportPreview } from "../utils/preview";
 import { axisRange, axisRangeLayout, numericBounds } from "../utils/axisRange";
 import {
   buildPlotData,
@@ -200,6 +202,8 @@ const axisLabel = (axis: XAxisKey): string =>
   xAxisOptions.find((option) => option.key === axis)?.label ?? "x";
 
 const defaultXAxisUnit = (axis: XAxisKey): string => {
+  if (axis === "current") return "mA";
+  if (axis === "voltage") return "V";
   if (axis === "retentionTime") return "s";
   if (axis === "acqTime" || axis === "activationTime") {
     return "ms";
@@ -305,13 +309,20 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
   const [activeTab, setActiveTab] = useState<PlotTab>("data");
   const [activeStyleTab, setActiveStyleTab] = useState<StyleTab>("curve");
   const [xAxis, setXAxis] = useState<XAxisKey>(() => readPlotSetting(initialSettings, "xAxis", "acqTime"));
-  const rows = useMemo(() => rowsForPlotAxis(sourceRows, xAxis), [sourceRows, xAxis]);
+  const axisRows = useMemo(() => rowsForPlotAxis(sourceRows, xAxis), [sourceRows, xAxis]);
+  const [yMode, setYMode] = useState<YMode>(() => readPlotSetting(initialSettings, "yMode", "absolute"));
+  const [replicateMode, setReplicateMode] = useState<ReplicateMode>(() => ["sd", "sem"].includes(String(initialSettings.replicateMode)) ? initialSettings.replicateMode as ReplicateMode : "individual");
+  const aggregation = useMemo(() => replicateMode === "individual" ? { rows: axisRows, warnings: [] } : aggregateReplicates(axisRows, xAxis, yMode), [axisRows, xAxis, yMode, replicateMode]);
+  const rows = aggregation.rows;
+  const omittedAxisFiles = useMemo(() => {
+    const visible = new Set(axisRows.map(row => row.id));
+    return new Set(sourceRows.filter(row => !visible.has(row.id)).map(row => row.fileId)).size;
+  }, [sourceRows, axisRows]);
   const omittedWavelengthFiles = useMemo(() => {
     if (xAxis !== "wavelength") return 0;
-    const visibleIds = new Set(rows.map(row => row.id));
+    const visibleIds = new Set(axisRows.map(row => row.id));
     return new Set(sourceRows.filter(row => !visibleIds.has(row.id)).map(row => row.fileId)).size;
-  }, [sourceRows, rows, xAxis]);
-  const [yMode, setYMode] = useState<YMode>(() => readPlotSetting(initialSettings, "yMode", "absolute"));
+  }, [sourceRows, axisRows, xAxis]);
   const [title, setTitle] = useState(() => readPlotSetting(initialSettings, "title", "Ion intensity plot"));
   const [showTitle, setShowTitle] = useState(() => readPlotSetting(initialSettings, "showTitle", defaultPlotAppearance.showTitle));
   const [xTitle, setXTitle] = useState(() => readPlotSetting(initialSettings, "xTitle", axisLabel("acqTime")));
@@ -349,7 +360,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
   const [curveMode, setCurveMode] = useState<CurveMode>(() => readPlotSetting(initialSettings, "curveMode", "connect"));
   const [polynomialDegree, setPolynomialDegree] = useState(() => readPlotSetting(initialSettings, "polynomialDegree", 3));
   const [movingAverageWindow, setMovingAverageWindow] = useState(() => readPlotSetting(initialSettings, "movingAverageWindow", 5));
-  const [previewExportRatio, setPreviewExportRatio] = useState(() => readPlotSetting(initialSettings, "previewExportRatio", true));
+  const previewExportRatio = true;
   const [plotHeight, setPlotHeight] = useState(() => readPlotSetting(initialSettings, "plotHeight", 640));
   const [exportWidth, setExportWidth] = useState(() => readPlotSetting(initialSettings, "exportWidth", defaultPlotAppearance.exportWidth));
   const [exportHeight, setExportHeight] = useState(() => readPlotSetting(initialSettings, "exportHeight", defaultPlotAppearance.exportHeight));
@@ -373,7 +384,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
   const [previewAreaWidth, setPreviewAreaWidth] = useState(0);
   const [previewAreaHeight, setPreviewAreaHeight] = useState(0);
 
-  useEffect(() => { settingsRef.current = { xAxis, yMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, highlightOnClick, highlightedIonId, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors, colorPalette }; });
+  useEffect(() => { settingsRef.current = { xAxis, yMode, replicateMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, highlightOnClick, highlightedIonId, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors, colorPalette }; });
 
   const shouldShowLegend =
     showLegend && (forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
@@ -401,6 +412,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
   const plotData = useMemo(
     () =>
       buildPlotData(rows, xAxis, yMode, shouldShowLegend, {
+        replicateMode,
         colors: traceColors,
         colorPalette,
         lineWidth,
@@ -412,6 +424,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
         highlightedIonId: highlightOnClick ? highlightedIonId : undefined,
       }, xValueMultiplier),
     [
+      replicateMode,
       curveMode,
       lineShape,
       lineWidth,
@@ -460,17 +473,8 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
 
     const maxPreviewWidth =
       previewAreaWidth > 0 ? previewAreaWidth : safeExportWidth;
-    const maxPreviewHeight = Math.max(
-      180,
-      previewAreaHeight > 0
-        ? Math.min(plotHeight, previewAreaHeight)
-        : plotHeight,
-    );
-    const scale = Math.min(
-      1,
-      maxPreviewWidth / safeExportWidth,
-      maxPreviewHeight / safeExportHeight,
-    );
+    const maxPreviewHeight = Math.max(1, previewAreaHeight > 0 ? previewAreaHeight : plotHeight);
+    const { scale } = fitExportPreview(safeExportWidth, safeExportHeight, maxPreviewWidth, maxPreviewHeight);
 
     return Number.isFinite(scale) && scale > 0 ? scale : 1;
   }, [
@@ -484,17 +488,20 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
 
   const previewFrameWidth = Math.max(
     1,
-    Math.round(safeExportWidth * previewScale),
+    safeExportWidth * previewScale,
   );
   const previewFrameHeight = Math.max(
     1,
-    Math.round(safeExportHeight * previewScale),
+    safeExportHeight * previewScale,
   );
   const plotRenderWidth = previewExportRatio ? safeExportWidth : undefined;
   const plotRenderHeight = previewExportRatio ? safeExportHeight : plotHeight;
 
   const xDataBounds = useMemo(() => numericBounds(plotData.flatMap(trace => trace.x)), [plotData]);
-  const yDataBounds = useMemo(() => numericBounds(plotData.flatMap(trace => trace.y)), [plotData]);
+  const yDataBounds = useMemo(() => numericBounds(plotData.flatMap(trace => trace.y.flatMap((y, index) => {
+    const error = trace.error_y?.array[index] ?? 0;
+    return [y - error, y + error];
+  }))), [plotData]);
   const xAxisRange = useMemo(() => axisRange(xMin, xMax, xDataBounds), [xMin, xMax, xDataBounds]);
   const yAxisRange = useMemo(() => axisRange(yMin, yMax, yDataBounds), [yMin, yMax, yDataBounds]);
 
@@ -758,7 +765,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
     setLineShape("linear");
     setCurveMode("connect");
     setPolynomialDegree(3);
-    setPreviewExportRatio(true);
+
     setPlotHeight(640);
     setExportWidth(1000);
     setExportHeight(760);
@@ -783,7 +790,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
     setLegendColumns(defaultPlotAppearance.legendColumns);
     setHighlightOnClick(false); setHighlightedIonId("");
     setShowLegend(true); setShowGrid(false); setShowAxisBox(true);
-    setAxisLineWidth(2); setPreviewExportRatio(true);
+    setAxisLineWidth(2);
     setAxisColor("#111111"); setPlotBackground("#ffffff"); setPaperBackground("#ffffff");
     setStylePresetStatus("Default Arial appearance applied");
   };
@@ -921,7 +928,6 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
     setCurveMode(settings.curveMode ?? "connect");
     setPolynomialDegree(settings.polynomialDegree ?? 3);
     setMovingAverageWindow(settings.movingAverageWindow ?? 5);
-    setPreviewExportRatio(settings.previewExportRatio);
     setPlotHeight(settings.plotHeight);
     setExportWidth(settings.exportWidth);
     setExportHeight(settings.exportHeight);
@@ -1064,7 +1070,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
     setLineShape("linear");
     setCurveMode("connect");
     setPolynomialDegree(3);
-    setPreviewExportRatio(true);
+
     setPlotHeight(720);
     setAxisColor("#111111");
     setGridColor("#d7d7d7");
@@ -1230,6 +1236,12 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
             <div className="plot-menu">
             <div className="plot-control-group">
               <h3>Text and axes</h3>
+              <label><span>Replicates</span><select aria-label="Replicates" value={replicateMode} onChange={event => setReplicateMode(event.target.value as ReplicateMode)}>
+                <option value="individual">Individual files</option><option value="sd">Mean ± sample SD</option><option value="sem">Mean ± SEM</option>
+              </select></label>
+              {replicateMode !== "individual" && <p>Equal weight per file. Normalization is applied per file before averaging. Groups match the other metadata and spectrum type; edit Experiment group to separate batches. Missing or repeated replicate IDs are not pooled.</p>}
+              {aggregation.warnings.length > 0 && <details open><summary>Replicate warnings ({aggregation.warnings.length})</summary>{aggregation.warnings.map(warning => <p key={warning}>{warning}</p>)}</details>}
+              {(xAxis === "current" || xAxis === "voltage") && omittedAxisFiles > 0 && <p role="status">{omittedAxisFiles} files without a numeric {xAxis} are omitted. LED OFF stays in Data; assign a reference coordinate explicitly if you want to plot it.</p>}
               {omittedWavelengthFiles > 0 && <p role="status">Segments without a positive numeric wavelength: {omittedWavelengthFiles}. Omitted from this plot and its normalization; available in Data and segment spectrum export.</p>}
               <div className="plot-controls">
                 <label>
@@ -2014,17 +2026,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
                 />
               </label>
 
-              <label>
-                <span>Preview max height</span>
-                <input
-                  type="number"
-                  min="320"
-                  max="1800"
-                  step="20"
-                  value={plotHeight}
-                  onChange={(event) => setPlotHeight(Number(event.target.value))}
-                />
-              </label>
+              <p>The preview fits the available workspace and always uses the export aspect ratio. Export dimensions control the downloaded image size.</p>
             </div>
 
             <div className="style-switches">
@@ -2032,11 +2034,9 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
                 <input
                   type="checkbox"
                   checked={previewExportRatio}
-                  onChange={(event) =>
-                    setPreviewExportRatio(event.target.checked)
-                  }
+                  disabled
                 />
-                <span>Match PNG preview</span>
+                <span>Preview always matches export ratio</span>
               </label>
 
               <label className="checkbox-label">

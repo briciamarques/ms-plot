@@ -1,4 +1,5 @@
 import { BrukerImport } from "./components/BrukerImport";
+import { ThermoImport } from "./components/ThermoImport";
 import { useMemo, useState, useRef } from "react";
 import { FileUpload } from "./components/FileUpload";
 import { IonSelectionPanel, formatIonText } from "./components/IonSelectionPanel";
@@ -31,11 +32,12 @@ import {
 } from "./utils/filenameMetadata";
 import { suggestIonTargets } from "./utils/ionSuggestions";
 
-type WorkspaceTab = "files" | "bruker" | "ions" | "plot" | "data";
+type WorkspaceTab = "files" | "bruker" | "thermo" | "ions" | "plot" | "data";
 
 const workspaceTabs: Array<{ key: WorkspaceTab; label: string }> = [
   { key: "files", label: "Files & metadata" },
   { key: "bruker", label: "Bruker files" },
+  { key: "thermo", label: "Thermo RAW" },
   { key: "ions", label: "Ions" },
   { key: "plot", label: "Plot" },
   { key: "data", label: "Data" },
@@ -338,6 +340,20 @@ function App() {
             onSaveProject={saveProject}
             onLoadProject={loadProject}
           />
+
+        <div className="workspace-tab-panel" hidden={activeWorkspaceTab !== "thermo"}>
+          <ThermoImport files={files} onImport={imported => {
+            setFiles(current => [...current, ...imported]);
+            setSelectedIds(new Set(imported.map(file => file.id)));
+            setPlotSelectedOnly(true);
+            if (files.length === 0) updateIons([...new Set(imported.map(file => file.metadata.parentIon).filter(Boolean))].map(mz => ({ id: createId("ion"), targetMz: mz, label: "precursor" })));
+            setPlotInitial({ ...plotSettingsRef.current, xAxis: "current", xTitle: "Current", xUnit: "mA", xValueScale: "raw", xValueMultiplier: 1,
+              replicateMode: "sd", curveMode: "connect", xMin: "", xMax: "", yMin: "0", yMax: "" });
+            setPlotRevision(value => value + 1);
+            setActiveWorkspaceTab("ions");
+            setProjectStatus("RAW files added. Choose fragment ions, review metadata, then open Plot. Mean ± SD is enabled; LED OFF remains available in Data.");
+          }} />
+        </div>
 
         <div className="workspace-tab-panel" hidden={activeWorkspaceTab !== "bruker"}>
           <BrukerImport onImport={(imported, originPreset, axis) => {

@@ -10,6 +10,10 @@ export type SpectrumMetadata = {
   acqTime: string;
   activationTime: string;
   ledPower: string;
+  current: string;
+  voltage: string;
+  concentration: string;
+  experiment: string;
   wavelength: string;
   replicate: string;
   notes: string;
@@ -27,6 +31,14 @@ export type SpectrumFile = {
   validLineCount: number;
   invalidLineCount: number;
   warnings: string[];
+  thermo?: {
+    fingerprint: string;
+    channel: string;
+    instrument: string;
+    mode: string;
+    scans: Array<{ timeSeconds: number; peaks: Peak[] }>;
+    method: "mean-scan-maximum";
+  };
   bruker?: {
     source: string;
     segment: number;
@@ -69,6 +81,8 @@ export type ProcessedRow = {
   relativeIntensity: number;
   selectedIonPercent: number;
   warning: string;
+  acquisitionKey?: string;
+  statistics?: { n: number; sd: number | null; sem: number | null; files: string[] };
 };
 
 export type XAxisKey =
@@ -77,6 +91,8 @@ export type XAxisKey =
   | "acqTime"
   | "activationTime"
   | "ledPower"
+  | "current"
+  | "voltage"
   | "wavelength"
   | "replicate";
 
@@ -111,6 +127,10 @@ export const metadataFields: Array<{
   { key: "acqTime", label: "Act. Time (ms)", placeholder: "100 ms" },
   { key: "activationTime", label: "Activation time", placeholder: "20 ms" },
   { key: "ledPower", label: "LED power", placeholder: "max" },
+  { key: "current", label: "Current (mA)", placeholder: "10" },
+  { key: "voltage", label: "Voltage (V)", placeholder: "5" },
+  { key: "concentration", label: "Concentration", placeholder: "20 uM" },
+  { key: "experiment", label: "Experiment group", placeholder: "Optional batch / sample ID" },
   { key: "wavelength", label: "Wavelength", placeholder: "365 nm" },
   { key: "replicate", label: "Replicate", placeholder: "1" },
   { key: "notes", label: "Notes", placeholder: "optional" },
@@ -122,6 +142,8 @@ export const xAxisOptions: Array<{ key: XAxisKey; label: string }> = [
   { key: "acqTime", label: "Act. Time" },
   { key: "activationTime", label: "Activation time" },
   { key: "ledPower", label: "LED power" },
+  { key: "current", label: "Current" },
+  { key: "voltage", label: "Voltage" },
   { key: "wavelength", label: "Wavelength" },
   { key: "replicate", label: "Replicate" },
 ];
@@ -145,6 +167,10 @@ export const emptyMetadata = (): SpectrumMetadata => ({
   acqTime: "",
   activationTime: "",
   ledPower: "",
+  current: "",
+  voltage: "",
+  concentration: "",
+  experiment: "",
   wavelength: "",
   replicate: "",
   notes: "",

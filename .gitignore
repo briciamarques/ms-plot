@@ -1,4 +1,8 @@
 node_modules/
+thermo-raw-test/
+*.raw
+*.mzML
+__pycache__/
 Bruker-method/
 dist/
 .pnpm-store/

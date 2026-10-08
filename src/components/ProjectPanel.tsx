@@ -25,7 +25,8 @@ export function ProjectPanel({
   };
 
   return (
-    <section className="workspace-section project-panel">
+    <details className="workspace-section project-panel">
+      <summary>Project · Save and reopen{status ? ` · ${status}` : ""}</summary>
       <div className="section-header">
         <div>
           <p className="section-kicker">Project</p>
@@ -59,6 +60,6 @@ export function ProjectPanel({
           />
         </label>
       </div>
-    </section>
+    </details>
   );
 }

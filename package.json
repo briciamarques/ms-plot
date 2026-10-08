@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "node tests/bruker.mjs",
+    "test": "node tests/bruker.mjs && node tests/thermo.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview"

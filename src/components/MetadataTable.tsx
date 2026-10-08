@@ -40,7 +40,7 @@ export function MetadataTable({
       .map((field) => field.key)
       .filter(
         (field) =>
-          field !== "activationTime" && field !== "replicate" && field !== "notes",
+          field !== "notes",
       ),
   );
 
