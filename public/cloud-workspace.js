@@ -25,7 +25,8 @@
  const select=el('select',null,listRow);select.setAttribute('aria-label','Your cloud projects and preset sets');
  const open=el('button','Open selected',listRow);const refresh=el('button','Refresh list',listRow);
  el('p','Save explicitly after editing. Saving a project includes its data and settings; presets are saved as a separate set. RAW source files are not uploaded.',tools);
- document.body.prepend(panel);
+ if (window.MSWorkspaceMenu) window.MSWorkspaceMenu.mount(panel, 'cloud');
+ else document.body.append(panel);
  let client,user=null,busy=false,opened=null,epoch=0,recovery=false;
  function message(s){status.textContent=s;}
  function adapter(){if(!window.MSCloudAdapter)throw Error('The editor is still loading. Try again in a moment.');return window.MSCloudAdapter;}

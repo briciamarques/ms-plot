@@ -54,7 +54,8 @@
   input.type = 'file'; input.accept = '.json,application/json'; input.hidden = true;
   const status = document.createElement('p'); status.setAttribute('role', 'status');
   panel.append(download, restore, input, status);
-  document.body.append(panel);
+  if (window.MSWorkspaceMenu) window.MSWorkspaceMenu.mount(panel, 'backup');
+  else document.body.append(panel);
   download.addEventListener('click', () => {
     try {
       const storage = snapshot();
