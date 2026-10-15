@@ -506,6 +506,12 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
   const yAxisRange = useMemo(() => axisRange(yMin, yMax, yDataBounds), [yMin, yMax, yDataBounds]);
 
   useEffect(() => {
+    const refreshCloudPresets = () => setSavedPlotStyles(loadSavedPlotStyles());
+    window.addEventListener("ms-cloud-presets-loaded", refreshCloudPresets);
+    return () => window.removeEventListener("ms-cloud-presets-loaded", refreshCloudPresets);
+  }, []);
+
+  useEffect(() => {
     try {
       window.localStorage.setItem(
         STYLE_PRESETS_STORAGE_KEY,

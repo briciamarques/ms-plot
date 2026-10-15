@@ -1,6 +1,6 @@
 import { BrukerImport } from "./components/BrukerImport";
 import { ThermoImport } from "./components/ThermoImport";
-import { useMemo, useState, useRef } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { FileUpload } from "./components/FileUpload";
 import { IonSelectionPanel, formatIonText } from "./components/IonSelectionPanel";
 import { WorkspacePanelBoundary } from "./components/WorkspacePanelBoundary";
@@ -31,6 +31,19 @@ import {
   inferMetadataFromFilename,
 } from "./utils/filenameMetadata";
 import { suggestIonTargets } from "./utils/ionSuggestions";
+
+declare global {
+  interface Window {
+    MSCloudAdapter?: {
+      getCurrentProject: () => unknown;
+      loadProject: (project: unknown) => void;
+      getSavedProjects: () => unknown[];
+      getPresets: () => unknown;
+      loadPresets: (data: unknown) => void;
+    };
+    MSCloudPresets: { read: () => unknown; restore: (data: unknown) => void };
+  }
+}
 
 type WorkspaceTab = "files" | "bruker" | "thermo" | "ions" | "plot" | "data";
 
@@ -246,7 +259,7 @@ function App() {
     }
   };
 
-  const saveProject = () => {
+  const currentProjectSnapshot = () => {
     const snapshot = createProjectSnapshot(
       projectName,
       files,
@@ -258,6 +271,11 @@ function App() {
     snapshot.plotSettings = plotSettingsRef.current;
     snapshot.ionDraft = ionDraft;
 
+    return snapshot;
+  };
+
+  const saveProject = () => {
+    const snapshot = currentProjectSnapshot();
     downloadTextFile(
       safeProjectFilename(projectName),
       JSON.stringify(snapshot, null, 2),
@@ -266,9 +284,7 @@ function App() {
     setProjectStatus("Project file saved");
   };
 
-  const loadProject = async (file: File) => {
-    try {
-      const content = await readFile(file);
+  const restoreProjectContent = (content: string) => {
       const snapshot = parseProjectSnapshot(content);
       const restoredSelectedIds = new Set(
         snapshot.selectedFileIds.filter((fileId) =>
@@ -286,6 +302,23 @@ function App() {
       setTolerance(snapshot.tolerance);
       setSelectedIds(restoredSelectedIds);
       setProjectStatus("Project file opened");
+  };
+
+  useEffect(() => {
+    window.MSCloudAdapter = {
+      getCurrentProject: currentProjectSnapshot,
+      loadProject: data => restoreProjectContent(JSON.stringify(data)),
+      getSavedProjects: () => [],
+      getPresets: () => window.MSCloudPresets.read(),
+      loadPresets: data => window.MSCloudPresets.restore(data),
+    };
+    return () => { delete window.MSCloudAdapter; };
+  });
+
+  const loadProject = async (file: File) => {
+    try {
+      const content = await readFile(file);
+      restoreProjectContent(content);
     } catch (error) {
       setProjectStatus(
         error instanceof Error ? error.message : "Could not open project file",
