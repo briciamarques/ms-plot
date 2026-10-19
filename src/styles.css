@@ -1163,6 +1163,19 @@ input[aria-invalid="true"] { border-color: #be123c; background: #fff7f8; }
 .metadata-table .filename-cell, .processed-table .filename-cell { position: sticky; left: 0; z-index: 1; background: #fff; box-shadow: 2px 0 3px #0001; }
 .metadata-table .filename-cell { min-width: 180px; }
 .filename-truncate { max-width: 210px; }
+.thermo-reader-help { margin-bottom: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: #f4f9f7; line-height: 1.6; }
+.thermo-reader-help h3 { margin: 6px 0; font-size: 1.1rem; }
+.thermo-reader-help p { max-width: 920px; }
+.reader-location { font-size: .75rem; font-weight: 700; text-transform: uppercase; color: #245e45; letter-spacing: .06em; }
+.reader-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 8px; }
+.reader-actions a { text-decoration: none; text-align: center; }
+.thermo-reader-help details { padding-block: 10px; border-top: 1px solid var(--line); }
+.thermo-reader-help summary { cursor: pointer; font-weight: 600; }
+.thermo-reader-help li { margin-bottom: 10px; padding-left: 4px; }
+.thermo-reader-help code { overflow-wrap: anywhere; }
+.thermo-reader-help kbd { border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; background: white; }
+.reader-copy { padding: 4px 8px; margin: 4px; border: 1px solid var(--line-strong); background: white; border-radius: 5px; cursor: pointer; font: inherit; }
+.reader-transfer { font-size: .85rem; border-top: 1px solid var(--line); padding-top: 12px; }
 .status-pill.warning { white-space: normal; min-width: 150px; border-radius: 6px; }
 @media (max-width: 700px) {
   .workspace-tabs { flex-wrap: wrap; gap: 4px; padding-bottom: 4px; overflow: visible; }

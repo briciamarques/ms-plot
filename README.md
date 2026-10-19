@@ -376,3 +376,14 @@ pnpm dev
 ```bash
 pnpm build
 ```
+# Abrir arquivos Thermo RAW pelo botão do site
+
+Na área **Thermo RAW**, o site mostra instruções em português e distingue a versão online da versão local. O botão **Iniciar leitor e abrir versão local** usa o aplicativo deste computador; não envia RAW para a Vercel.
+
+No Windows já configurado, abra a pasta do projeto (neste computador, `C:\MS-plot`) e dê dois cliques em **Ativar-botao-PDMS.cmd** uma vez. Volte ao site e use o botão; aceite a abertura do aplicativo se o navegador perguntar. A ativação vale apenas para esse usuário do Windows. O navegador não confirma ao site se o aplicativo abriu.
+
+Sem ativar o botão, **Start-PDMS.cmd** continua iniciando o leitor e abrindo o navegador. Não é necessário escrever comandos. O endereço `http://127.0.0.1:8765` só funciona depois que o leitor iniciou. A página online continua independente da local: transfira o projeto usando Save/Open project file ou a conta na nuvem.
+
+Em outro computador, instale primeiro o projeto e suas dependências (Python, Node.js e ProteoWizard com suporte Thermo). O botão não é um instalador dessas dependências. Use **Desativar-botao-PDMS.cmd** antes de mover a instalação; depois ative na nova pasta.
+
+O protocolo `pdmsplot` é registrado somente em `HKEY_CURRENT_USER\Software\Classes`, sem administrador. Ele chama um script local fixo e não repassa nenhum conteúdo da URL para comandos. Erros aparecem em uma mensagem do Windows e no arquivo `node_modules/.tmp/pdms-site-button.log`.

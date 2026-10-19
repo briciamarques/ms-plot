@@ -3,11 +3,13 @@ import type { Peak, SpectrumFile } from "../types";
 import { emptyMetadata } from "../types";
 import { inferMetadataFromFilename } from "../utils/filenameMetadata";
 import { createId } from "../utils/id";
+import { ThermoReaderHelp } from "./ThermoReaderHelp";
 
 type Channel = { key: string; label: string; precursor: string; mode: string; instrument: string; scans: Array<{timeSeconds: number; peaks: Peak[]}> };
 type Imported = { filename: string; fingerprint: string; channels: Channel[]; selected: string };
 
 export function ThermoImport({ files, onImport }: { files: SpectrumFile[]; onImport: (files: SpectrumFile[]) => void }) {
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [pending, setPending] = useState<Imported[]>([]);
   const [messages, setMessages] = useState<string[]>([]);
@@ -15,7 +17,19 @@ export function ThermoImport({ files, onImport }: { files: SpectrumFile[]; onImp
   const busy = useRef(false);
   const controller = useRef<AbortController>();
   const [readerStatus, setReaderStatus] = useState("");
-  const check = () => fetch('/api/thermo/status', {signal: AbortSignal.timeout(5000)}).then(r => r.ok ? r.json() : Promise.reject()).then(data => {setAvailable(data.available === true); setReaderStatus(data.available ? "Local service and ProteoWizard are ready." : "Local service is running, but ProteoWizard was not found. Install vendor reader support or set MSCONVERT_PATH.");}).catch(() => {setAvailable(false); setReaderStatus("Local service is unreachable. Use Start-PDMS.cmd on this computer to launch the site and reader.");});
+  const check = async () => {
+    if (!local) { setAvailable(false); setReaderStatus("Você está na versão online. Para importar RAW, abra a versão local usando as instruções abaixo."); return; }
+    setAvailable(null);
+    setReaderStatus("");
+    try {
+      const response = await fetch('/api/thermo/status', {signal: AbortSignal.timeout(5000)});
+      if (!response.ok) throw new Error('Reader unavailable');
+      const data = await response.json();
+      if (typeof data.available !== 'boolean' || (data.app !== 'PD-MS Plot Builder' && data.maxBytes !== 512 * 1024 * 1024)) throw new Error('Unexpected reader');
+      setAvailable(data.available);
+      setReaderStatus(data.available ? "Leitor RAW conectado. Você já pode escolher um ou vários arquivos." : "O leitor iniciou, mas não encontrou o ProteoWizard. Instale o ProteoWizard com suporte Thermo neste computador e reabra Start-PDMS.cmd.");
+    } catch { setAvailable(false); setReaderStatus("O leitor não respondeu nesta página. Abra Start-PDMS.cmd e use a página que ele abrir automaticamente."); }
+  };
   useEffect(() => { void check(); }, []);
 
   const read = async (uploads: File[]) => {
@@ -61,10 +75,9 @@ export function ThermoImport({ files, onImport }: { files: SpectrumFile[]; onImp
     setMessages([`${imported.length} files added. Review current, voltage, condition and replicate in Files & metadata.`]);
   };
   return <section className="workspace-section">
-    <div className="section-header"><div><p className="section-kicker">Batch import</p><h2>Thermo RAW</h2></div><button className="secondary-button" onClick={() => void check()}>Check reader</button></div>
-    <p role="status">{available === null ? 'Checking RAW reader…' : available ? 'RAW reader connected. Select all replicates together.' : 'RAW reader is not connected. Start the local reader and open its site address.'}</p>
-    <p className="help-text">{readerStatus}</p>
-    {available === false && <details open><summary>Connect the RAW reader</summary><p>On the computer with ProteoWizard, run <code>python scripts/thermo_server.py</code> after building the site, then open <a href="http://127.0.0.1:8765">http://127.0.0.1:8765</a> on that computer. A static hosted site alone cannot decode these RAW files.</p></details>}
+    <div className="section-header"><div><p className="section-kicker">Importação de um ou vários arquivos</p><h2>Thermo RAW</h2></div>{local && <button className="secondary-button" disabled={available === null} onClick={() => void check()}>Verificar leitor</button>}</div>
+    <p role="status" lang="pt-BR">{available === null ? 'Verificando leitor RAW…' : readerStatus}</p>
+    <ThermoReaderHelp local={local} connected={available === true} />
     <label className="secondary-button">Choose Thermo RAW files<input aria-label="Choose Thermo RAW files" type="file" multiple accept=".raw" disabled={!!progress || !available} onChange={event => { void read(Array.from(event.target.files ?? [])); event.target.value = ''; }} /></label>
     <p>Extraction: highest intensity inside the ion tolerance in each scan, then mean across all scans in the selected spectrum type. Scans without signal contribute zero. No smoothing or normalization is applied during import.</p>
     <p>Condition, current, voltage and replicate are inferred from filenames and remain editable. LED OFF has no assumed current. Label 365LED is not assigned a wavelength automatically; enter nm in metadata if appropriate.</p>
