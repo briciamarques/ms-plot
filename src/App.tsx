@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrukerImport } from "./components/BrukerImport";
 import { ThermoImport } from "./components/ThermoImport";
 import { FileUpload } from "./components/FileUpload";
@@ -21,6 +21,19 @@ import { numericTargets } from "./utils/ions";
 import { readTxt } from "./utils/readTxt";
 import { useProjectSession } from "./hooks/useProjectSession";
 import { useProcessedRows } from "./hooks/useProcessedRows";
+
+declare global {
+  interface Window {
+    MSCloudAdapter?: {
+      getCurrentProject: () => unknown;
+      loadProject: (project: unknown) => void;
+      getSavedProjects: () => unknown[];
+      getPresets: () => unknown;
+      loadPresets: (data: unknown) => void;
+    };
+    MSCloudPresets: { read: () => unknown; restore: (data: unknown) => void };
+  }
+}
 
 const PlotBuilder = lazy(() => import("./components/PlotBuilder").then(module => ({default: module.PlotBuilder})));
 type WorkspaceTab = "files" | "bruker" | "thermo" | "ions" | "plot" | "data";
@@ -103,14 +116,27 @@ function App() {
     downloadTextFile(safeProjectFilename(projectName), JSON.stringify({...project, savedAt: new Date().toISOString()}, null, 2), "application/json;charset=utf-8");
     session.markSaved(); setProjectStatus("Project download requested");
   };
-  const loadProject = async (file: File) => {
-    try {
-      const snapshot = parseProjectSnapshot(await file.text());
-      importEpoch.current++; importController.current?.abort();
-      session.restore(snapshot); setPlotRevision(value => value + 1);
-      setProjectStatus("Project opened. Undo returns to the previous project.");
-    } catch (error) { setProjectStatus(error instanceof Error ? error.message : "Could not open project"); }
+  const restoreProjectContent = (content: string) => {
+    const snapshot = parseProjectSnapshot(content);
+    importEpoch.current++; importController.current?.abort();
+    session.restore(snapshot); setPlotRevision(value => value + 1);
+    setProjectStatus("Project opened. Undo returns to the previous project.");
   };
+  const loadProject = async (file: File) => {
+    try { restoreProjectContent(await file.text()); }
+    catch (error) { setProjectStatus(error instanceof Error ? error.message : "Could not open project"); }
+  };
+  useEffect(() => {
+    if (!session.ready) return;
+    window.MSCloudAdapter = {
+      getCurrentProject: () => ({...currentRef.current, savedAt: new Date().toISOString()}),
+      loadProject: data => restoreProjectContent(JSON.stringify(data)),
+      getSavedProjects: () => [],
+      getPresets: () => window.MSCloudPresets.read(),
+      loadPresets: data => window.MSCloudPresets.restore(data),
+    };
+    return () => { delete window.MSCloudAdapter; };
+  });
   if (!session.ready) return <main className="loading-screen" role="status">Restoring your workspace…</main>;
   return <div className={`app-shell ${activeWorkspaceTab === "plot" ? "plot-view-active" : ""}`}>
     <header className="app-header"><div><p className="eyebrow">PD-MS · v0.2.0</p><h1>PD-MS Plot Builder</h1></div><div className="header-stats"><span>{files.length} files</span><span>{numericIons.length} ions</span><span>{processing.rows.length} rows</span></div></header>

@@ -45,7 +45,7 @@ def main():
         return 0
     if not node or not dependencies:
         return 1
-    sources = [*ROOT.joinpath('src').rglob('*'), ROOT / 'package.json', ROOT / 'vite.config.ts']
+    sources = [*ROOT.joinpath('src').rglob('*'), *ROOT.joinpath('public').rglob('*'), ROOT / 'index.html', ROOT / 'package.json', ROOT / 'vite.config.ts']
     built = ROOT / 'dist/index.html'
     if not built.exists() or any(path.is_file() and path.stat().st_mtime > built.stat().st_mtime for path in sources):
         print('Building the latest site…', flush=True)
