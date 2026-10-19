@@ -10,7 +10,7 @@ for (const name of ['types','utils/id','utils/project','utils/recovery','utils/i
 }
 const load = name => import(pathToFileURL(path.join(output, `${name}.mjs`)));
 const {numericTargets, ionWarnings} = await load('utils/ions');
-const {createProjectSnapshot, parseProjectSnapshot} = await load('utils/project');
+const {createProjectSnapshot, createEmptyProject, parseProjectSnapshot} = await load('utils/project');
 const {parseSpectrumTxt} = await load('utils/parser');
 const {projectReducer} = await load('hooks/useProjectSession');
 const {emptyMetadata} = await load('types');
@@ -70,3 +70,18 @@ for (const invalid of [-1, 9, 1.5, '2']) {
   assert.throws(() => parseProjectSnapshot(JSON.stringify({...project, plotSettings: {legendMzDecimals: invalid}})), /legend m\/z decimals/);
 }
 console.log('PASS: legend decimal formatting, original trace values/identities preserved, persistence and invalid precision rejection.');
+
+const emptyProject = createEmptyProject();
+assert.deepEqual([emptyProject.files, emptyProject.ions, emptyProject.selectedFileIds], [[], [], []]);
+assert.equal(emptyProject.ionDraft, '');
+assert.equal(emptyProject.tolerance, .5);
+assert.equal(emptyProject.plotSelectedOnly, false);
+assert.deepEqual(emptyProject.plotSettings, {legendPosition: 'top'});
+assert.deepEqual(parseProjectSnapshot(JSON.stringify(emptyProject)).files, []);
+const previous = {...project, plotSettings: {legendMzDecimals: 3}, ionDraft: '100, 200'};
+const freshHistory = projectReducer({current: previous, past: [], future: [], key: '', time: 0}, {type: 'restore', project: emptyProject});
+assert.equal(freshHistory.current, emptyProject);
+assert.equal(projectReducer(freshHistory, {type: 'undo'}).current, previous);
+assert.equal(projectReducer(projectReducer(freshHistory, {type: 'undo'}), {type: 'redo'}).current, emptyProject);
+assert.notEqual(createEmptyProject().files, emptyProject.files);
+console.log('PASS: new project clears data and settings, preserves the previous project for undo, and can be redone.');

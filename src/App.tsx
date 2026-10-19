@@ -13,7 +13,7 @@ import { emptyMetadata } from "./types";
 import { createId } from "./utils/id";
 import { defaultPlotAppearance } from "./utils/plot";
 import { normalizeIntensities } from "./utils/processing";
-import { createProjectSnapshot, parseProjectSnapshot, safeProjectFilename } from "./utils/project";
+import { createEmptyProject, createProjectSnapshot, parseProjectSnapshot, safeProjectFilename } from "./utils/project";
 import { downloadTextFile } from "./utils/csv";
 import { fillBlankMetadataFromFilename, inferMetadataFromFilename } from "./utils/filenameMetadata";
 import { suggestIonTargets } from "./utils/ionSuggestions";
@@ -53,6 +53,7 @@ function App() {
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTab>("files");
   const [plotVisited, setPlotVisited] = useState(false);
   const [plotRevision, setPlotRevision] = useState(0);
+  const [importRevision, setImportRevision] = useState(0);
   const plotSettingsRef = useRef<Record<string, unknown>>(project.plotSettings ?? {});
   const [projectStatus, setProjectStatus] = useState("");
   const [importProgress, setImportProgress] = useState("");
@@ -102,13 +103,14 @@ function App() {
         patch({files: [...latest.files, ...loaded], selectedFileIds: [...latest.selectedFileIds, ...loaded.map(file => file.id)]});
       }
       setImportMessages([`${loaded.length} files added${controller.signal.aborted ? "; remaining import cancelled" : ""}.`, ...messages]);
-    } finally { importController.current = undefined; setImportProgress(""); }
+    } finally { if (importController.current === controller) { importController.current = undefined; setImportProgress(""); } }
   };
   const loadExamples = async () => {
+    const epoch = importEpoch.current;
     try {
       const examples = import.meta.glob("../example-data/*.txt", {query: "?raw", import: "default"});
       const samples = await Promise.all(Object.entries(examples).map(async ([path, load]) => new File([String(await load())], path.split("/").pop()!, {type: "text/plain"})));
-      await handleFilesSelected(samples);
+      if (epoch === importEpoch.current) await handleFilesSelected(samples);
     } catch (error) { setProjectStatus(error instanceof Error ? error.message : "Could not load examples"); }
   };
   const updateMetadata = (fileId: string, field: MetadataField, value: string) => patch({files: files.map(file => file.id === fileId ? {...file, metadata: {...file.metadata, [field]: value}} : file)}, `metadata:${fileId}:${field}`);
@@ -116,14 +118,27 @@ function App() {
     downloadTextFile(safeProjectFilename(projectName), JSON.stringify({...project, savedAt: new Date().toISOString()}, null, 2), "application/json;charset=utf-8");
     session.markSaved(); setProjectStatus("Project download requested");
   };
+  const resetImports = () => {
+    importEpoch.current++; importController.current?.abort(); importController.current = undefined;
+    setImportProgress(""); setImportMessages([]); setImportRevision(value => value + 1);
+  };
+  const newProject = () => {
+    resetImports();
+    session.restore(createEmptyProject());
+    plotSettingsRef.current = {};
+    setPlotRevision(value => value + 1); setPlotVisited(false); setActiveWorkspaceTab("files");
+    setProjectStatus("Novo projeto criado. Use Undo para voltar ao trabalho anterior antes de fechar a página.");
+    window.dispatchEvent(new Event("ms-project-new"));
+  };
   const restoreProjectContent = (content: string) => {
     const snapshot = parseProjectSnapshot(content);
-    importEpoch.current++; importController.current?.abort();
+    resetImports();
     session.restore(snapshot); setPlotRevision(value => value + 1);
     setProjectStatus("Project opened. Undo returns to the previous project.");
   };
   const loadProject = async (file: File) => {
-    try { restoreProjectContent(await file.text()); }
+    const epoch = importEpoch.current;
+    try { const content = await file.text(); if (epoch === importEpoch.current) restoreProjectContent(content); }
     catch (error) { setProjectStatus(error instanceof Error ? error.message : "Could not open project"); }
   };
   useEffect(() => {
@@ -145,7 +160,7 @@ function App() {
       if (next >= 0) { event.preventDefault(); selectTab(workspaceTabs[next].key); document.getElementById(`tab-${workspaceTabs[next].key}`)?.focus(); }
     }}>{tab.label}</button>)}</nav>
     <main className="app-main">
-      <ProjectPanel projectName={projectName} status={projectStatus} dirty={session.dirty} backupStatus={session.backupStatus} canUndo={session.canUndo} canRedo={session.canRedo} onUndo={() => historyAction("undo")} onRedo={() => historyAction("redo")} onProjectNameChange={value => patch({projectName: value}, "name")} onSaveProject={saveProject} onLoadProject={loadProject} />
+      <ProjectPanel projectName={projectName} status={projectStatus} dirty={session.dirty} backupStatus={session.backupStatus} canUndo={session.canUndo} canRedo={session.canRedo} onUndo={() => historyAction("undo")} onRedo={() => historyAction("redo")} onProjectNameChange={value => patch({projectName: value}, "name")} onSaveProject={saveProject} onLoadProject={loadProject} onNewProject={newProject} />
       <div className="workspace-tab-panel active-panel">
         {processing.busy && <div className="processing-status" role="status">Processing spectra in the background… <button type="button" onClick={processing.cancel}>Cancel processing</button></div>}
         {processing.error && <div className="validation-notice" role="alert">{processing.error} <button type="button" onClick={processing.retry}>Retry processing</button></div>}
@@ -162,13 +177,13 @@ function App() {
             onUpdateMetadata={updateMetadata} onApplyBulkMetadata={(field, value) => patch({files: files.map(file => selectedIds.has(file.id) ? {...file, metadata: {...file.metadata, [field]: value}} : file)})}
             onRemoveSelected={() => patch({files: files.filter(file => !selectedIds.has(file.id)), selectedFileIds: []})} />}
         </div>
-        <div id="panel-thermo" role="tabpanel" aria-labelledby="tab-thermo" hidden={activeWorkspaceTab !== "thermo"}><ThermoImport files={files} onImport={imported => {
+        <div id="panel-thermo" role="tabpanel" aria-labelledby="tab-thermo" hidden={activeWorkspaceTab !== "thermo"}><ThermoImport key={importRevision} files={files} onImport={imported => {
           const nextIons = files.length === 0 ? [...new Set(imported.map(file => file.metadata.parentIon).filter(Boolean))].map(mz => ({id: createId("ion"), targetMz: mz, label: "precursor"})) : ions;
           patch({files: [...files, ...imported], selectedFileIds: imported.map(file => file.id), plotSelectedOnly: true, ions: nextIons, ionDraft: formatIonText(nextIons)}, "import");
           changePlot({...project.plotSettings, xAxis: "current", xTitle: "Current", xUnit: "mA", xValueScale: "raw", xValueMultiplier: 1, replicateMode: "sd", curveMode: "connect", xMin: "", xMax: "", yMin: "0", yMax: ""}); selectTab("ions");
           setProjectStatus("RAW files added. Review ions and metadata. Mean ± SD is enabled.");
         }} /></div>
-        <div id="panel-bruker" role="tabpanel" aria-labelledby="tab-bruker" hidden={activeWorkspaceTab !== "bruker"}><BrukerImport onImport={(imported, originPreset, axis) => {
+        <div id="panel-bruker" role="tabpanel" aria-labelledby="tab-bruker" hidden={activeWorkspaceTab !== "bruker"}><BrukerImport key={importRevision} onImport={(imported, originPreset, axis) => {
           patch({files: [...files, ...imported], selectedFileIds: [...selectedIds, ...imported.map(file => file.id)]}, "import");
           if (originPreset) {
             const nextIons = [241, 255, 751, 311, 617, 375, 163, 271, 283].map(mass => ({id: createId("ion"), targetMz: String(mass), label: ""}));

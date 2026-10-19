@@ -77,6 +77,11 @@ export const createProjectSnapshot = (
   selectedFileIds,
 });
 
+export const createEmptyProject = (): ProjectSnapshot => ({
+  ...createProjectSnapshot("untitled-project", [], [], 0.5, []),
+  ionDraft: "", plotSelectedOnly: false, plotSettings: {legendPosition: "top"},
+});
+
 export const safeProjectFilename = (projectName: string): string => {
   const normalizedName = projectName
     .trim()

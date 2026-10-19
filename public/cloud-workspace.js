@@ -28,6 +28,11 @@
  if (window.MSWorkspaceMenu) window.MSWorkspaceMenu.mount(panel, 'cloud');
  else document.body.append(panel);
  let client,user=null,busy=false,opened=null,epoch=0,recovery=false;
+ let editorEpoch=0;
+ window.addEventListener('ms-project-new',()=>{
+  editorEpoch++;opened=null;name.value='';select.value='';
+  if(user)message('New local project. Its first cloud save will create a new cloud item.');
+ });
  function message(s){status.textContent=s;}
  function adapter(){if(!window.MSCloudAdapter)throw Error('The editor is still loading. Try again in a moment.');return window.MSCloudAdapter;}
  function check(result){if(result.error)throw result.error;return result.data;}
@@ -47,12 +52,14 @@
   const data=check(await client.from('ms_cloud_items').insert({user_id:uid,app:site,kind,name:itemName,payload:sized(payload),source_id:sourceId}).select('id,revision,kind').single());guard(uid);return data;
  }
  async function saveProject(asCopy=false){
-  const a=adapter(),payload=a.getCurrentProject(),itemName=title(payload.projectName||payload.name);const uid=user.id;
+  const a=adapter(),payload=a.getCurrentProject(),itemName=title(payload.projectName||payload.name);const uid=user.id,started=editorEpoch;let saved;
   if(opened?.kind==='project'&&!asCopy){
    const data=check(await client.from('ms_cloud_items').update({name:itemName,payload:sized(payload)}).eq('id',opened.id).eq('revision',opened.revision).select('id,revision,kind'));guard(uid);
-   if(data.length!==1)throw Error('This cloud project changed on another device. Open the latest version, or Save as new copy to preserve your edits.');opened=data[0];
-  }else opened=await insert('project',itemName,payload);
-  await listing();select.value=opened.id;message('Project saved in your cloud account at '+new Date().toLocaleTimeString()+'.');
+   if(data.length!==1)throw Error('This cloud project changed on another device. Open the latest version, or Save as new copy to preserve your edits.');saved=data[0];
+  }else saved=await insert('project',itemName,payload);
+  if(started!==editorEpoch)return;
+  opened=saved;
+  await listing();if(started!==editorEpoch)return;select.value=opened.id;message('Project saved in your cloud account at '+new Date().toLocaleTimeString()+'.');
  }
  auth.addEventListener('submit',e=>{e.preventDefault();run(async()=>{const data=check(await client.auth.signInWithPassword({email:email.value.trim(),password:password.value}));password.value='';user=data.user;tools.hidden=false;auth.hidden=true;account.textContent=user.email;await listing();message('Signed in. Your cloud projects are ready.');});});
  signup.onclick=()=>{if(!auth.reportValidity())return;run(async()=>{const data=check(await client.auth.signUp({email:email.value.trim(),password:password.value,options:{emailRedirectTo:location.origin+'/'}}));password.value='';message(data.session?'Account created and signed in.':'Check your email to confirm your account, then return here and sign in.');});};
@@ -71,8 +78,9 @@
   }await listing();message(`Import complete: ${added} added, ${skipped} already present. Local copies kept.`);
  });
  open.onclick=()=>run(async()=>{
-  if(!select.value)return;const uid=user.id;
+  if(!select.value)return;const uid=user.id,started=editorEpoch;
   const item=check(await client.from('ms_cloud_items').select('*').eq('id',select.value).eq('app',site).single());guard(uid);
+  if(started!==editorEpoch)return;
   if(!confirm(item.kind==='project'?'Open this cloud project and replace the current editor contents? Save current edits first.':'Load this preset set into this browser? Current presets will be retained in a local recovery copy.'))return;
   if(item.kind==='project'){await adapter().loadProject(item.payload);opened={id:item.id,revision:item.revision,kind:item.kind};name.value=item.name;}
   else {adapter().loadPresets(item.payload);}

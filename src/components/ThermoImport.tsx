@@ -31,6 +31,7 @@ export function ThermoImport({ files, onImport }: { files: SpectrumFile[]; onImp
     } catch { setAvailable(false); setReaderStatus("O leitor não respondeu nesta página. Abra Start-PDMS.cmd e use a página que ele abrir automaticamente."); }
   };
   useEffect(() => { void check(); }, []);
+  useEffect(() => () => controller.current?.abort(), []);
 
   const read = async (uploads: File[]) => {
     if (busy.current) return;

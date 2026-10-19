@@ -1126,6 +1126,9 @@ input[aria-invalid="true"] { border-color: #be123c; background: #fff7f8; }
 .project-actions > label:first-child { flex: 1 1 180px; }
 .project-actions > label:first-child > span { font-size: .75rem; }
 .project-actions input { padding: 7px 10px; }
+.new-project-options { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #f4f9f7; font-size: .85rem; line-height: 1.5; }
+.new-project-options p { margin: 0 0 8px; }
+.project-panel:has(.new-project-options) { max-height: 55dvh; }
 .project-status { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .75rem; color: #526174; margin-top: 6px; }
 .unsaved { color: #92400e; }
 .active-panel { display: block; }
