@@ -1,6 +1,6 @@
 import { plotYValue } from "../types";
 import type { LegendPosition, ProcessedRow, XAxisKey, YMode } from "../types";
-import { formatMz } from "./format";
+import { formatLegendMz, type LegendMzDecimals } from "./format";
 import { paletteColor, trmsColors, type ColorPaletteId } from "./colorPalettes";
 import { normalizeIntensities } from "./processing";
 
@@ -41,6 +41,7 @@ export type PlotTrace = {
 };
 
 export type TraceStyleOptions = {
+  legendMzDecimals?: LegendMzDecimals;
   colors: Record<string, string>;
   colorPalette?: ColorPaletteId;
   lineWidth: number;
@@ -562,10 +563,10 @@ const fitCurve = (
   return null;
 };
 
-export const traceName = (targetMz: number, label: string): string =>
+export const traceName = (targetMz: number, label: string, decimals: LegendMzDecimals = "auto"): string =>
   label.trim()
-    ? `<i>m/z</i> ${formatMz(targetMz)} - ${label.trim()}`
-    : `<i>m/z</i> ${formatMz(targetMz)}`;
+    ? `<i>m/z</i> ${formatLegendMz(targetMz, decimals)} - ${label.trim()}`
+    : `<i>m/z</i> ${formatLegendMz(targetMz, decimals)}`;
 
 // Symmetric shrinking endpoints match the saved Origin worksheet: 1, 3, 5, …, 3, 1.
 export const movingAverageValues = (values: number[], window = 5): number[] => {
@@ -627,7 +628,7 @@ export const buildPlotData = (
       const yValues = sortedRows.map((row) =>
         plotYValue(row, yMode),
       );
-      const name = traceName(firstRow.targetMz, firstRow.label);
+      const name = traceName(firstRow.targetMz, firstRow.label, style.legendMzDecimals);
       const errorBars = style.replicateMode && style.replicateMode !== "individual" ? {
         error_y: { type: "data" as const, array: sortedRows.map(row => row.statistics?.[style.replicateMode === "sem" ? "sem" : "sd"] ?? null), visible: true, color, thickness: Math.max(1, style.lineWidth / 2), width: 4 },
       } : {};

@@ -45,3 +45,28 @@ assert.ok(fitted[0].meta.fit.residuals.every(value => Math.abs(value) < 1e-8));
 assert.ok(fitted[0].meta.fit.rmse < 1e-8);
 assert.equal(fitted[0].meta.fit.x.length, 5);
 console.log('PASS: polynomial diagnostics, residuals, RMSE and dashed fit traces.');
+
+const {formatLegendMz, readLegendMzDecimals} = await load('utils/format');
+assert.equal(formatLegendMz(751.321456, 2), '751.32');
+assert.equal(formatLegendMz(659.99999, 0), '660');
+assert.equal(formatLegendMz(283.1, 3), '283.100');
+assert.equal(formatLegendMz(751.321456), '751.321456');
+for (const invalid of [-1, 9, 1.5, null, '2', NaN]) assert.equal(readLegendMzDecimals(invalid), 'auto');
+const preciseRows = quadraticRows.map(row => ({...row, targetMz: 751.321456, label: 'fragment 1'}));
+const beforeRounding = JSON.stringify(preciseRows);
+for (const curveMode of ['connect', 'movingAverage', 'polynomial']) {
+  const style = {colors: {}, lineWidth: 2, markerSize: 5, lineShape: 'linear', curveMode, polynomialDegree: 2};
+  const original = buildPlotData(preciseRows, 'acqTime', 'absolute', true, style);
+  const rounded = buildPlotData(preciseRows, 'acqTime', 'absolute', true, {...style, legendMzDecimals: 2});
+  assert.ok(rounded[0].name.startsWith('<i>m/z</i> 751.32 - fragment 1'));
+  assert.deepEqual(rounded.map(({name, ...trace}) => trace), original.map(({name, ...trace}) => trace));
+}
+assert.equal(JSON.stringify(preciseRows), beforeRounding);
+for (const decimals of ['auto', 0, 2, 8]) {
+  const restored = parseProjectSnapshot(JSON.stringify({...project, plotSettings: {legendMzDecimals: decimals}}));
+  assert.equal(restored.plotSettings.legendMzDecimals, decimals);
+}
+for (const invalid of [-1, 9, 1.5, '2']) {
+  assert.throws(() => parseProjectSnapshot(JSON.stringify({...project, plotSettings: {legendMzDecimals: invalid}})), /legend m\/z decimals/);
+}
+console.log('PASS: legend decimal formatting, original trace values/identities preserved, persistence and invalid precision rejection.');

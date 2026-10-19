@@ -55,6 +55,7 @@ export function validateProjectSnapshot(value: unknown): ProjectSnapshot {
     for (const key of ["exportWidth", "exportHeight"]) if (settings[key] !== undefined) requireValue(finite(settings[key]) && settings[key] > 0 && settings[key] <= 20000, `${key} must be between 1 and 20000`);
     if (settings.movingAverageWindow !== undefined) requireValue(Number.isInteger(settings.movingAverageWindow) && Number(settings.movingAverageWindow) >= 3 && Number(settings.movingAverageWindow) <= 31 && Number(settings.movingAverageWindow) % 2 === 1, "invalid moving average window");
     if (settings.traceColors !== undefined) requireValue(record(settings.traceColors) && Object.values(settings.traceColors).every(item => typeof item === "string"), "invalid curve colors");
+    if (settings.legendMzDecimals !== undefined) requireValue(settings.legendMzDecimals === "auto" || (finite(settings.legendMzDecimals) && Number.isInteger(settings.legendMzDecimals) && settings.legendMzDecimals >= 0 && settings.legendMzDecimals <= 8), "legend m/z decimals must be auto or an integer from 0 to 8");
   }
   return normalizeProject(value as unknown as ProjectSnapshot);
 }

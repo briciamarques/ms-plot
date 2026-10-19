@@ -2,6 +2,7 @@ import {useEffect, useState} from "react";
 import type {LegendPosition, ProcessedRow, XAxisKey, SpectrumFile} from "../../types";
 import {xAxisOptions} from "../../types";
 import type {ColorPaletteId} from "../../utils/colorPalettes";
+import type {LegendMzDecimals} from "../../utils/format";
 
 export function readPlotSetting<T>(settings: Record<string, unknown>, key: string, fallback: T): T {
   const value = settings[key];
@@ -65,6 +66,7 @@ export type PlotStyleSettings = {
   showLegend: boolean;
   legendPosition: LegendPosition;
   legendColumns?: number;
+  legendMzDecimals?: LegendMzDecimals;
   highlightOnClick?: boolean;
   legendInsideX: number;
   legendInsideY: number;

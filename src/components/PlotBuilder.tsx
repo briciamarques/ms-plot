@@ -23,6 +23,7 @@ import { safeProjectFilename } from "../utils/project";
 import { PlotToolbar } from "./PlotToolbar";
 import { MethodSummary } from "./MethodSummary";
 import { FitResults } from "./FitResults";
+import { readLegendMzDecimals } from "../utils/format";
 
 import { readPlotSetting, type PlotBuilderProps, type PlotTab, type PlotInteraction, type InteractivePlotElement, type StyleTab, type PlotFont, type LineShape, type CurveMode, type TickFormat, type XValueScale, type JournalPresetKey, type FigureContent, type RasterDpi, type PlotStyleSettings, type SavedPlotStyle, MM_PER_INCH, STYLE_PRESETS_STORAGE_KEY, styleTabs, loadSavedPlotStyles, journalPresets, figureContentOptions, rasterDpiOptions, pointsToPixels, pixelsToPoints, pixelsFromMm, mmFromPixels, formatDecimal, axisLabel, defaultXAxisUnit, axisTitleWithUnit, tickFormatValue, normalizeHexColor, type ColorControlProps, ColorControl } from "./plot/controls";
 
@@ -70,6 +71,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
   const [showLegend, setShowLegend] = useState(() => readPlotSetting(initialSettings, "showLegend", true));
   const [legendPosition, setLegendPosition] = useState<LegendPosition>(() => readPlotSetting(initialSettings, "legendPosition", "top"));
   const [legendColumns, setLegendColumns] = useState(() => readPlotSetting(initialSettings, "legendColumns", 0));
+  const [legendMzDecimals, setLegendMzDecimals] = useState(() => readLegendMzDecimals(initialSettings.legendMzDecimals));
   const [highlightOnClick, setHighlightOnClick] = useState(() => readPlotSetting(initialSettings, "highlightOnClick", false));
   const [highlightedIonId, setHighlightedIonId] = useState(() => readPlotSetting(initialSettings, "highlightedIonId", ""));
   const [legendInsideX, setLegendInsideX] = useState(() => readPlotSetting(initialSettings, "legendInsideX", 0.98));
@@ -114,7 +116,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
   const [previewAreaWidth, setPreviewAreaWidth] = useState(0);
   const [previewAreaHeight, setPreviewAreaHeight] = useState(0);
 
-  useEffect(() => { settingsRef.current = { xAxis, yMode, replicateMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, highlightOnClick, highlightedIonId, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors, colorPalette }; const signature = JSON.stringify(settingsRef.current); if (settingsInitialized.current !== null && settingsInitialized.current !== signature) onSettingsChange(settingsRef.current); settingsInitialized.current = signature; });
+  useEffect(() => { settingsRef.current = { xAxis, yMode, replicateMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, legendMzDecimals, highlightOnClick, highlightedIonId, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors, colorPalette }; const signature = JSON.stringify(settingsRef.current); if (settingsInitialized.current !== null && settingsInitialized.current !== signature) onSettingsChange(settingsRef.current); settingsInitialized.current = signature; });
 
   const shouldShowLegend =
     showLegend && (forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
@@ -142,6 +144,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
   const plotData = useMemo(
     () =>
       buildPlotData(rows, xAxis, yMode, shouldShowLegend, {
+        legendMzDecimals,
         replicateMode,
         colors: traceColors,
         colorPalette,
@@ -154,6 +157,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
         highlightedIonId: highlightOnClick ? highlightedIonId : undefined,
       }, xValueMultiplier),
     [
+      legendMzDecimals,
       replicateMode,
       curveMode,
       lineShape,
@@ -438,6 +442,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
     legendInsideY,
     legendPosition,
     legendColumns,
+    legendMzDecimals,
     highlightOnClick,
     rows,
     xAxis,
@@ -524,6 +529,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
     setExportHeight(defaultPlotAppearance.exportHeight);
     setLegendPosition(defaultPlotAppearance.legendPosition);
     setLegendColumns(defaultPlotAppearance.legendColumns);
+    setLegendMzDecimals("auto");
     setHighlightOnClick(false); setHighlightedIonId("");
     setShowLegend(true); setShowGrid(false); setShowAxisBox(true);
     setAxisLineWidth(2);
@@ -570,6 +576,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
     showLegend,
     legendPosition,
     legendColumns,
+    legendMzDecimals,
     highlightOnClick,
     legendInsideX,
     legendInsideY,
@@ -650,6 +657,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
     setShowLegend(settings.showLegend);
     setLegendPosition(settings.legendPosition);
     setLegendColumns(settings.legendColumns ?? 0);
+    setLegendMzDecimals(readLegendMzDecimals(settings.legendMzDecimals));
     setHighlightOnClick(settings.highlightOnClick ?? false);
     setHighlightedIonId("");
     setLegendInsideX(settings.legendInsideX);
@@ -1405,6 +1413,14 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
                 />
               </label>
 
+              <label>
+                <span>m/z decimal places · casas decimais</span>
+                <select value={legendMzDecimals} onChange={event => setLegendMzDecimals(event.target.value === "auto" ? "auto" : Number(event.target.value))}>
+                  <option value="auto">Automatic · original precision</option>
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(decimals => <option key={decimals} value={decimals}>{decimals} · m/z {(751.321456).toFixed(decimals)}</option>)}
+                </select>
+              </label>
+
               <label className="checkbox-label">
                 <input
                   type="checkbox"
@@ -1416,6 +1432,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
             </div>
 
             <p className="fit-guidance">Choose 2 columns to split the legend. Columns adapt to the available width; your selection is the maximum. Use the horizontal and vertical controls below to move an inside legend.</p>
+            <p className="fit-guidance">Casas decimais: altera a exibição dos m/z na legenda e nas figuras exportadas. Os valores usados na extração, nos cálculos e nas tabelas mantêm a precisão original.</p>
             <label className="checkbox-label"><input type="checkbox" checked={highlightOnClick} onChange={event => {
               setHighlightOnClick(event.target.checked); setHighlightedIonId("");
             }} /><span>Highlight one m/z on click</span></label>
