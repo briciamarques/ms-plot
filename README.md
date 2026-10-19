@@ -1,5 +1,61 @@
 # PD-MS Plot Builder
 
+## Workspace 0.2
+
+On Windows, double-click **Start-PDMS.cmd** to check prerequisites, rebuild stale
+assets, start the loopback reader if necessary, and open the local site.
+`python scripts/start_pdms.py --check` prints diagnostics without starting anything.
+Python, Node and the installed project dependencies are required. ProteoWizard is
+only required for Thermo RAW. Reader logs are under `node_modules/.tmp/pdms-reader.log`.
+
+The Project bar keeps save/open and **Undo / Redo** visible. The last 30 edit
+groups are retained during the current session, including file removal, bulk
+metadata changes, ion replacement, project opening and plot settings. Consecutive
+edits to one field are grouped. Opening a valid project can be undone; invalid
+projects are rejected before replacing the current data.
+
+An IndexedDB recovery copy is written after edits settle and restored on the next
+visit to the **same browser and site address**. This is local storage, not cloud
+sync. Clearing browser data removes recovery. Keep downloading project files for
+portable backups. Recovery failures are displayed, and the page warns before
+leaving with changes since the last project download. Undo history is not retained
+across reloads. Avoid editing the same recovery workspace in multiple tabs.
+
+Blank, nonnumeric, nonpositive and exact duplicate ions do not create processed
+rows. The first occurrence of a duplicate mass is used. Overlapping tolerance
+windows and collisions under a Bruker rounding setting are reported. A blank ion
+row remains editable without introducing an m/z 0 curve. Loading an empty ion
+list now clears the targets and can be undone.
+
+TXT batches are parsed in background workers, with per-file errors, progress,
+cancellation and SHA-256 content deduplication (also for renamed files). TXT size
+is limited to 128 MB per file. Invalid numeric-looking lines are counted and
+reported. Previously saved TXT files without fingerprints acquire content-based
+deduplication only when reimported. Bruker parsing and intensity extraction also
+run in workers. Metadata and label changes reuse extraction results. Cancelling
+RAW upload stops the browser's batch; an already-started vendor conversion may
+finish on the local service before it accepts another request.
+
+The welcome screen includes fictitious example data. Tables have search,
+warnings filters and 50-row pages; metadata also has filename sorting and
+experiment-appropriate initial columns. Table filters do not change exports or
+file selection. Bulk operations affect all selected files, including other pages.
+
+Plot tools load on first visit to Plot. New workspaces use an outside-top legend;
+saved positions and the existing reference presets retain their explicit choices.
+**Expand plot** hides the settings panel. The export menu offers PNG, SVG and the
+plotted CSV/TXT data, named after the project. PNG is limited to 40 million pixels.
+**Method details** identifies extraction, normalization, smoothing and replicates.
+Fits are dashed, and **Fit results** displays model parameters, R² and RMSE and
+exports observed x values and residuals. These are unweighted descriptive fits.
+The ordinary plot CSV/TXT continues to export measured values, with a separate
+moving-average column where applicable; fit diagnostics have their own export.
+
+Validation: `npm test`, `npm run build`, `python tests/thermo_reader.py`.
+With Vite running, open `/tests/browser/index.html` to run the axis, cleanup and
+worker regression suites together. All three must report PASS. The worker suite
+uses synthetic data and checks TXT/Bruker parsing, hashes, extraction and updates.
+
 React + TypeScript + Vite app for building ion intensity plots from multiple mass spectrometry `.txt` files.
 
 ## What it does

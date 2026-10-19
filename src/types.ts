@@ -26,6 +26,7 @@ export type MetadataField = keyof SpectrumMetadata;
 export type SpectrumFile = {
   id: string;
   filename: string;
+  fingerprint?: string;
   metadata: SpectrumMetadata;
   peaks: Peak[];
   validLineCount: number;

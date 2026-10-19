@@ -2,6 +2,7 @@ import { CheckSquare, Columns3, ScanSearch, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { MetadataField, SpectrumFile, SpectrumMetadata } from "../types";
 import { metadataFields } from "../types";
+import { TableTools } from "./TableTools";
 
 type MetadataTableProps = {
   files: SpectrumFile[];
@@ -35,14 +36,19 @@ export function MetadataTable({
   const [bulkField, setBulkField] = useState<MetadataField>("compound");
   const [bulkValue, setBulkValue] = useState("");
   const [showColumnControls, setShowColumnControls] = useState(false);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [warningOnly, setWarningOnly] = useState(false);
+  const [sort, setSort] = useState("import");
   const [visibleFieldKeys, setVisibleFieldKeys] = useState<MetadataField[]>(
-    metadataFields
-      .map((field) => field.key)
-      .filter(
-        (field) =>
-          field !== "notes",
-      ),
+    ["compound", "condition", "replicate", ...(files.some(file => file.thermo) ? ["current", "voltage"] as MetadataField[] : files.some(file => file.bruker) ? ["retentionTime", "segment", "wavelength"] as MetadataField[] : ["acqTime"] as MetadataField[])],
   );
+  const matchingFiles = useMemo(() => {
+    const term = query.toLocaleLowerCase();
+    const filtered = files.filter(file => (!warningOnly || file.warnings.length > 0) && [file.filename, ...Object.values(file.metadata)].some(value => value.toLocaleLowerCase().includes(term)));
+    return sort === "name" ? filtered.sort((a, b) => a.filename.localeCompare(b.filename, undefined, {numeric: true})) : filtered;
+  }, [files, query, warningOnly, sort]);
+  const safePage = Math.min(page, Math.max(0, Math.ceil(matchingFiles.length / 50) - 1));
 
   const selectedCount = selectedIds.size;
   const allSelected = files.length > 0 && files.every((file) => selectedIds.has(file.id));
@@ -183,6 +189,11 @@ export function MetadataTable({
         </div>
       ) : null}
 
+      <TableTools query={query} onQuery={setQuery} count={matchingFiles.length} page={safePage} onPage={setPage}>
+        <label>Sort<select value={sort} onChange={event => setSort(event.target.value)}><option value="import">Import order</option><option value="name">Filename</option></select></label>
+        <label className="checkbox-label"><input type="checkbox" checked={warningOnly} onChange={event => {setWarningOnly(event.target.checked); setPage(0);}} />Warnings only</label>
+      </TableTools>
+      <p className="help-text">{selectedCount} files selected across the project. Bulk edits and removal apply to all selected files, including other pages. Use Undo to restore changes.</p>
       <div className="table-shell">
         <table className="data-table metadata-table">
           <thead>
@@ -196,14 +207,14 @@ export function MetadataTable({
             </tr>
           </thead>
           <tbody>
-            {files.length === 0 ? (
+            {matchingFiles.length === 0 ? (
               <tr>
                 <td colSpan={visibleMetadataFields.length + 3} className="empty-cell">
-                  No files loaded
+                  No matching files
                 </td>
               </tr>
             ) : (
-              files.map((file) => (
+              matchingFiles.slice(safePage * 50, (safePage + 1) * 50).map((file) => (
                 <tr key={file.id}>
                   <td className="select-column">
                     <input

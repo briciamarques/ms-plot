@@ -12,6 +12,26 @@ export type ExtractedIonIntensity = {
   warning: string;
 };
 
+// Metadata and labels do not change extraction. Weak keys release old spectra.
+const extractionCache = new WeakMap<object, {configuration: string; values: Map<number, ExtractedIonIntensity>}>();
+function cachedExtraction(file: SpectrumFile, mass: number, tolerance: number): ExtractedIonIntensity {
+  const source = file.thermo?.scans ?? file.peaks;
+  const configuration = JSON.stringify([tolerance, file.bruker?.method, file.bruker?.mzDecimals, !!file.thermo]);
+  let cache = extractionCache.get(source);
+  if (!cache || cache.configuration !== configuration) {
+    cache = {configuration, values: new Map()}; extractionCache.set(source, cache);
+  }
+  const existing = cache.values.get(mass);
+  if (existing) return existing;
+  const extracted = file.thermo ? extractThermoIntensity(file, mass, tolerance)
+    : file.bruker?.method === "exact-mz-window-observed-mean" || file.bruker?.method === "rounded-mz-observed-mean"
+    ? extractBrukerIntensity(file.peaks, mass, tolerance, file.bruker.mzDecimals)
+    : extractIonIntensity(file.peaks, mass, tolerance);
+  if (cache.values.size >= 256) cache.values.clear();
+  cache.values.set(mass, extracted);
+  return extracted;
+}
+
 export const extractIonIntensity = (
   peaks: Peak[],
   targetMz: number,
@@ -94,10 +114,7 @@ export const processSpectra = (
 ): ProcessedRow[] => {
   const rows = files.flatMap((file) =>
     ions.map((ion) => {
-      const extraction = file.thermo ? extractThermoIntensity(file, ion.targetMz, tolerance)
-        : file.bruker?.method === "exact-mz-window-observed-mean" || file.bruker?.method === "rounded-mz-observed-mean"
-        ? extractBrukerIntensity(file.peaks, ion.targetMz, tolerance, file.bruker.mzDecimals)
-        : extractIonIntensity(file.peaks, ion.targetMz, tolerance);
+      const extraction = cachedExtraction(file, ion.targetMz, tolerance);
       const fileWarning = file.peaks.length === 0 ? "File has no valid data" : "";
       const warning = [fileWarning || extraction.warning, ...file.warnings].filter(Boolean).join("; ");
 

@@ -134,7 +134,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         route = urlsplit(self.path).path
         if route == '/api/thermo/status':
-            self.send_json(200, {'available': bool(self.server.reader), 'maxBytes': MAX_BYTES})
+            self.send_json(200, {'app': 'PD-MS Plot Builder', 'version': '0.2.0', 'available': bool(self.server.reader), 'maxBytes': MAX_BYTES})
             return
         if route.startswith('/api/'):
             self.send_json(404, {'error': 'Unknown endpoint'})

@@ -1,0 +1,11 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>PD-MS browser regressions</title>
+<h1>PD-MS browser regressions</h1><p id="result">Running…</p>
+<iframe title="Axis ranges" src="./axis-range.html"></iframe><iframe title="Plot cleanup" src="./plot-cleanup.html"></iframe>
+<iframe title="Workers" src="./workers.html"></iframe>
+<script type="module">
+const started=Date.now(); const timer=setInterval(()=>{
+  const results=[...document.querySelectorAll('iframe')].map(frame=>frame.contentDocument?.getElementById('result')?.textContent ?? '');
+  if(results.some(text=>text.startsWith('FAIL')) || Date.now()-started>30000){document.getElementById('result').textContent='FAIL: '+results.join(' | ');clearInterval(timer);}
+  else if(results.every(text=>text.startsWith('PASS'))){document.getElementById('result').textContent='PASS: all browser regression suites';clearInterval(timer);}
+},100);
+</script></html>

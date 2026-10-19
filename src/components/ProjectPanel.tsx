@@ -4,6 +4,12 @@ import type { ChangeEvent } from "react";
 type ProjectPanelProps = {
   projectName: string;
   status: string;
+  dirty: boolean;
+  backupStatus: string;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   onProjectNameChange: (projectName: string) => void;
   onSaveProject: () => void;
   onLoadProject: (file: File) => void;
@@ -15,6 +21,7 @@ export function ProjectPanel({
   onProjectNameChange,
   onSaveProject,
   onLoadProject,
+  dirty, backupStatus, canUndo, canRedo, onUndo, onRedo,
 }: ProjectPanelProps) {
   const handleProjectFile = (event: ChangeEvent<HTMLInputElement>) => {
     const projectFile = event.target.files?.[0];
@@ -25,16 +32,7 @@ export function ProjectPanel({
   };
 
   return (
-    <details className="workspace-section project-panel">
-      <summary>Project · Save and reopen{status ? ` · ${status}` : ""}</summary>
-      <div className="section-header">
-        <div>
-          <p className="section-kicker">Project</p>
-          <h2>Save and reopen</h2>
-        </div>
-        {status ? <span className="inline-status">{status}</span> : null}
-      </div>
-
+    <section className="workspace-section project-panel" aria-label="Project">
       <div className="project-actions">
         <label>
           <span>Project name</span>
@@ -59,7 +57,10 @@ export function ProjectPanel({
             onChange={handleProjectFile}
           />
         </label>
+        <button type="button" className="secondary-button" disabled={!canUndo} onClick={onUndo}>Undo</button>
+        <button type="button" className="secondary-button" disabled={!canRedo} onClick={onRedo}>Redo</button>
       </div>
-    </details>
+      <div className="project-status" role="status"><span className={dirty ? "unsaved" : ""}>{dirty ? "Changes since last project download" : "Project download up to date"}</span><span>{backupStatus}</span>{status && <span>{status}</span>}</div>
+    </section>
   );
 }

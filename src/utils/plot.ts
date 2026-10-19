@@ -30,10 +30,10 @@ export type PlotTrace = {
   text: string[];
   hovertemplate: string;
   marker: { size: number; color: string };
-  line: { width: number; color: string; shape: "linear" | "spline" };
+  line: { width: number; color: string; shape: "linear" | "spline"; dash?: "dash" | "dot" };
   showlegend: boolean;
   legendgroup?: string;
-  meta: { ionId: string };
+  meta: { ionId: string; fit?: FitDiagnostics };
   legendrank?: number;
   uid?: string;
   legend?: string;
@@ -170,6 +170,7 @@ const solveLinearSystem = (
   return augmented.map((row) => row[size]);
 };
 
+export type FitDiagnostics = { model: string; parameters: string; rSquared: number; rmse: number; x: number[]; residuals: number[] };
 type CurveFitResult = {
   x: number[];
   y: number[];
@@ -177,6 +178,9 @@ type CurveFitResult = {
   rSquared: number;
   sumSquaredErrors: number;
   parameterCount: number;
+  parameters: string;
+  observedX: number[];
+  residuals: number[];
 };
 
 const fitStatistics = (
@@ -291,6 +295,9 @@ const polynomialFit = (
     rSquared: statistics.rSquared,
     sumSquaredErrors: statistics.sumSquaredErrors,
     parameterCount: coefficientCount,
+    parameters: `z=(x-${center})/${scale}; y=sum(c[k]*z^k); c=[${coefficients.join(", ")}]`,
+    observedX: points.map(point => point.x),
+    residuals: points.map(point => point.y - evaluate(point.x)),
   };
 };
 
@@ -391,6 +398,9 @@ const exponentialPlateauFit = (
     rSquared: best.statistics.rSquared,
     sumSquaredErrors: best.statistics.sumSquaredErrors,
     parameterCount: 3,
+    parameters: `z=(x-${minX})/${span}; y=${best.intercept}+${best.slope}*(1-exp(-${best.rate}*z))`,
+    observedX: xValues,
+    residuals: xValues.map((x, i) => yValues[i] - (best.intercept + best.slope * (1 - Math.exp(-best.rate * (x - minX) / span)))),
   };
 };
 
@@ -482,6 +492,9 @@ const logisticFit = (
     rSquared: best.statistics.rSquared,
     sumSquaredErrors: best.statistics.sumSquaredErrors,
     parameterCount: 4,
+    parameters: `z=(x-${minX})/${span}; y=${best.intercept}+${best.slope}/(1+exp(-${best.rate}*(z-${best.midpoint})))`,
+    observedX: xValues,
+    residuals: xValues.map((x, i) => yValues[i] - (best.intercept + best.slope * sigmoid(best.rate * ((x - minX) / span - best.midpoint)))),
   };
 };
 
@@ -652,7 +665,7 @@ export const buildPlotData = (
         return [
           {
             x: fit.x,
-            meta: { ionId: firstRow.ionId }, legendgroup: groupId,
+            meta: { ionId: firstRow.ionId, fit: {model: fit.label, parameters: fit.parameters, rSquared: fit.rSquared, rmse: Math.sqrt(fit.sumSquaredErrors / Math.max(1, fit.residuals.length)), x: fit.observedX, residuals: fit.residuals} }, legendgroup: groupId,
             y: fit.y,
             type: "scatter",
             mode: "lines",
@@ -663,7 +676,7 @@ export const buildPlotData = (
             hovertemplate:
               "%{text}<br>x=%{x:.4g}<br>fitted intensity=%{y:.4g}<extra>%{fullData.name}</extra>",
             marker: { size: 0, color },
-            line: { width: style.lineWidth, color, shape: "linear" },
+            line: { width: style.lineWidth, color, shape: "linear", dash: "dash" },
             showlegend: showLegend,
           },
           {

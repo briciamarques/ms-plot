@@ -1,10 +1,10 @@
 {
   "name": "pd-ms-plot-builder",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "test": "node tests/bruker.mjs && node tests/thermo.mjs",
+    "test": "node tests/bruker.mjs && node tests/thermo.mjs && node tests/workspace.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview"

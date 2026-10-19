@@ -1,6 +1,6 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import type { SpectrumFile } from "../types";
-import { assignWavelengths, brukerChannels, wavelengthSequence, findBrukerFiles, parseBrukerExport, type BrukerOptions, type BrukerImport as ImportResult } from "../utils/bruker";
+import { assignWavelengths, brukerChannels, wavelengthSequence, findBrukerFiles, type BrukerOptions, type BrukerImport as ImportResult } from "../utils/bruker";
 
 export function BrukerImport({ onImport }: { onImport: (files: SpectrumFile[], originPreset: boolean, axis: "time" | "wavelength") => void }) {
   const [input, setInput] = useState<{ ascii: string; segments: string; source: string }>();
@@ -18,7 +18,10 @@ export function BrukerImport({ onImport }: { onImport: (files: SpectrumFile[], o
   const [waveStep, setWaveStep] = useState("-5");
   const [firstOff, setFirstOff] = useState(false);
   const [wavelengths, setWavelengths] = useState<Record<number, string>>({});
-  const channels = useMemo(() => input ? brukerChannels(input.ascii) : [], [input]);
+  const [channels, setChannels] = useState<ReturnType<typeof brukerChannels>>([]);
+  const worker = useRef<Worker>();
+  const readGeneration = useRef(0);
+  useEffect(() => () => worker.current?.terminate(), []);
   const mapping = useMemo(() => {
     if (!preview || axis !== "wavelength") return { files: preview?.files, error: "" };
     try { return { files: assignWavelengths(preview.files, preview.files.map(f => wavelengths[f.bruker!.segment] ?? "")), error: "" }; }
@@ -28,10 +31,12 @@ export function BrukerImport({ onImport }: { onImport: (files: SpectrumFile[], o
   const prepare = (data: NonNullable<typeof input>, scan: typeof scanUnit, segment: typeof segmentUnit, settings = options) => {
     setPreview(undefined);
     setAcknowledged(false);
-    try {
-      setPreview(parseBrukerExport(data.ascii, data.segments, data.source, scan, segment, settings));
-      setStatus("");
-    } catch (error) { setStatus(error instanceof Error ? error.message : "Could not read exports."); }
+    worker.current?.terminate();
+    const instance = new Worker(new URL("../workers/bruker.worker.ts", import.meta.url), {type: "module"});
+    worker.current = instance; setBusy(true); setStatus("Parsing spectra in the background…");
+    instance.onmessage = event => { if (worker.current !== instance) return; setPreview(event.data.preview); setChannels(event.data.channels ?? []); setStatus(event.data.error ?? ""); setBusy(false); instance.terminate(); };
+    instance.onerror = () => { setStatus("Import failed. Choose the exports again."); setBusy(false); instance.terminate(); };
+    instance.postMessage({data, scan, segment, settings});
   };
   const changeOptions = (settings: BrukerOptions, preset = false) => {
     setOptions(settings); setOriginPreset(preset);
@@ -41,19 +46,21 @@ export function BrukerImport({ onImport }: { onImport: (files: SpectrumFile[], o
     const selected = Array.from(event.target.files ?? []);
     event.target.value = "";
     if (!selected.length) return;
-    setBusy(true); setPreview(undefined); setInput(undefined); setStatus("Reading exports…");
+    const generation = ++readGeneration.current;
+    setBusy(true); setPreview(undefined); setInput(undefined); setChannels([]); setStatus("Reading exports…");
     try {
       const pair = findBrukerFiles(selected);
       const [ascii, segments] = await Promise.all([pair.ascii.text(), pair.segments.text()]);
+      if (generation !== readGeneration.current) return;
       const data = { ascii, segments, source: pair.source };
       const settings = { ...options, channelId: undefined };
       setOptions(settings); setWavelengths({});
       setInput(data);
       prepare(data, scanUnit, segmentUnit, settings);
-    } catch (error) { setStatus(error instanceof Error ? error.message : "Could not read folder."); }
-    finally { setBusy(false); }
+    } catch (error) { setStatus(error instanceof Error ? error.message : "Could not read folder."); setBusy(false); }
   };
   return <section className="workspace-section bruker-import">
+    {busy && <button type="button" className="secondary-button" onClick={() => {readGeneration.current++; worker.current?.terminate(); setBusy(false); setStatus("Import cancelled. Choose the exports again to retry.");}}>Cancel Bruker processing</button>}
     <div className="section-header"><div><p className="section-kicker">Input</p><h2>Bruker files</h2></div></div>
     <p>Run the export method in DataAnalysis, then choose your .d folder. The app reads data.ascii and Segments.txt locally in your browser.</p>
     <div className="bruker-actions">
@@ -142,7 +149,7 @@ export function BrukerImport({ onImport }: { onImport: (files: SpectrumFile[], o
       </table></div>
       <button type="button" className="secondary-button" disabled={busy || !mapping.files || (preview.warnings.length > 0 && !acknowledged)} onClick={() => {
         if (!mapping.files) return;
-        onImport(mapping.files, originPreset, axis); setPreview(undefined); setInput(undefined); setStatus("Segments added. Use Ions and Plot, or save your project above.");
+        onImport(mapping.files, originPreset, axis); setPreview(undefined); setInput(undefined); setChannels([]); setStatus("Segments added. Use Ions and Plot, or save your project above.");
       }}>Add segments to project</button>
     </>}
   </section>;

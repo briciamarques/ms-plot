@@ -2,12 +2,14 @@ import { ListPlus, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { IonTarget } from "../types";
 import { createId } from "../utils/id";
+import { ionWarnings, validMass } from "../utils/ions";
 
 type IonSelectionPanelProps = {
   ions: IonTarget[];
   ionText: string;
   onIonTextChange: (text: string) => void;
   tolerance: number;
+  roundingPrecisions?: number[];
   canSuggestIons: boolean;
   onIonsChange: (ions: IonTarget[]) => void;
   onToleranceChange: (tolerance: number) => void;
@@ -49,12 +51,14 @@ export function IonSelectionPanel({
   ionText,
   onIonTextChange,
   tolerance,
+  roundingPrecisions,
   canSuggestIons,
   onIonsChange,
   onToleranceChange,
   onSuggestIons,
 }: IonSelectionPanelProps) {
   const [suggestionDecimalPlaces, setSuggestionDecimalPlaces] = useState(-1);
+  const warnings = ionWarnings(ions, tolerance, roundingPrecisions);
 
   const updateIon = (ionId: string, patch: Partial<IonTarget>) => {
     onIonsChange(
@@ -72,9 +76,7 @@ export function IonSelectionPanel({
 
   const importList = () => {
     const parsedIons = parseIonText(ionText);
-    if (parsedIons.length > 0) {
-      onIonsChange(parsedIons);
-    }
+    onIonsChange(parsedIons);
   };
 
   return (
@@ -91,11 +93,16 @@ export function IonSelectionPanel({
             min="0"
             step="any"
             value={tolerance}
-            onChange={(event) => onToleranceChange(Number(event.target.value))}
+            onChange={(event) => {
+              const value = event.target.valueAsNumber;
+              if (Number.isFinite(value) && value >= 0) onToleranceChange(value);
+            }}
           />
         </label>
       </div>
 
+      {warnings.length > 0 && <div className="validation-notice" role="status">{warnings.map(message => <p key={message}>{message}</p>)}</div>}
+      <p className="help-text">Enter one positive m/z per line, optionally followed by = label. Use a decimal point. Empty, invalid and duplicate targets are excluded.</p>
       <div className="ion-grid">
         <div className="ion-list-loader">
           <textarea
@@ -156,6 +163,7 @@ export function IonSelectionPanel({
                       }
                       placeholder="751"
                       aria-label="Target m/z"
+                      aria-invalid={!validMass(ion.targetMz)}
                     />
                   </td>
                   <td>

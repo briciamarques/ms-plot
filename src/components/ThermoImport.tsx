@@ -13,23 +13,27 @@ export function ThermoImport({ files, onImport }: { files: SpectrumFile[]; onImp
   const [messages, setMessages] = useState<string[]>([]);
   const [progress, setProgress] = useState("");
   const busy = useRef(false);
-  const check = () => fetch('/api/thermo/status').then(r => r.ok ? r.json() : Promise.reject()).then(data => setAvailable(data.available === true)).catch(() => setAvailable(false));
+  const controller = useRef<AbortController>();
+  const [readerStatus, setReaderStatus] = useState("");
+  const check = () => fetch('/api/thermo/status', {signal: AbortSignal.timeout(5000)}).then(r => r.ok ? r.json() : Promise.reject()).then(data => {setAvailable(data.available === true); setReaderStatus(data.available ? "Local service and ProteoWizard are ready." : "Local service is running, but ProteoWizard was not found. Install vendor reader support or set MSCONVERT_PATH.");}).catch(() => {setAvailable(false); setReaderStatus("Local service is unreachable. Use Start-PDMS.cmd on this computer to launch the site and reader.");});
   useEffect(() => { void check(); }, []);
 
   const read = async (uploads: File[]) => {
     if (busy.current) return;
     busy.current = true;
+    controller.current = new AbortController();
     setMessages([]);
     const results: Imported[] = [];
     const errors: string[] = [];
     const known = new Set([...files.flatMap(file => file.thermo ? [file.thermo.fingerprint] : []), ...pending.map(file => file.fingerprint)]);
     try {
       for (const [index, file] of uploads.entries()) {
+        if (controller.current.signal.aborted) break;
         setProgress(`Reading ${index + 1}/${uploads.length}: ${file.name}`);
         try {
           if (!/\.raw$/i.test(file.name)) throw new Error('Choose Thermo .raw files');
           if (file.size > 512 * 1024 * 1024) throw new Error('Maximum size is 512 MB per file');
-          const response = await fetch('/api/thermo/convert', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+          const response = await fetch('/api/thermo/convert', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file, signal: controller.current.signal });
           if (!(response.headers.get('Content-Type') ?? '').includes('application/json')) throw new Error('RAW reader unavailable. Open the site through the local reader.');
           const result = await response.json();
           if (!response.ok) throw new Error(result.error ?? 'Could not read RAW');
@@ -37,11 +41,11 @@ export function ThermoImport({ files, onImport }: { files: SpectrumFile[]; onImp
           if (!result.channels?.length) throw new Error('No spectra returned');
           known.add(result.fingerprint);
           results.push({ filename: file.name, fingerprint: result.fingerprint, channels: result.channels, selected: result.channels.length === 1 ? result.channels[0].key : '' });
-        } catch (error) { errors.push(`${file.name}: ${error instanceof Error ? error.message : 'Reader unavailable'}`); }
+        } catch (error) { errors.push(`${file.name}: ${controller.current.signal.aborted ? 'Import cancelled; the local reader may finish its current conversion before accepting another.' : error instanceof Error ? error.message : 'Reader unavailable'}`); }
       }
       setPending(current => [...current, ...results]);
       setMessages(errors);
-    } finally { busy.current = false; setProgress(''); }
+    } finally { busy.current = false; controller.current = undefined; setProgress(''); }
   };
   const add = () => {
     const imported = pending.map(item => {
@@ -59,11 +63,12 @@ export function ThermoImport({ files, onImport }: { files: SpectrumFile[]; onImp
   return <section className="workspace-section">
     <div className="section-header"><div><p className="section-kicker">Batch import</p><h2>Thermo RAW</h2></div><button className="secondary-button" onClick={() => void check()}>Check reader</button></div>
     <p role="status">{available === null ? 'Checking RAW reader…' : available ? 'RAW reader connected. Select all replicates together.' : 'RAW reader is not connected. Start the local reader and open its site address.'}</p>
+    <p className="help-text">{readerStatus}</p>
     {available === false && <details open><summary>Connect the RAW reader</summary><p>On the computer with ProteoWizard, run <code>python scripts/thermo_server.py</code> after building the site, then open <a href="http://127.0.0.1:8765">http://127.0.0.1:8765</a> on that computer. A static hosted site alone cannot decode these RAW files.</p></details>}
     <label className="secondary-button">Choose Thermo RAW files<input aria-label="Choose Thermo RAW files" type="file" multiple accept=".raw" disabled={!!progress || !available} onChange={event => { void read(Array.from(event.target.files ?? [])); event.target.value = ''; }} /></label>
     <p>Extraction: highest intensity inside the ion tolerance in each scan, then mean across all scans in the selected spectrum type. Scans without signal contribute zero. No smoothing or normalization is applied during import.</p>
     <p>Condition, current, voltage and replicate are inferred from filenames and remain editable. LED OFF has no assumed current. Label 365LED is not assigned a wavelength automatically; enter nm in metadata if appropriate.</p>
-    {progress && <p role="status">{progress}</p>}
+    {progress && <p role="status">{progress} <button type="button" className="secondary-button" onClick={() => controller.current?.abort()}>Cancel RAW import</button></p>}
     {messages.length > 0 && <div role="status">{messages.map((message, index) => <p key={index}>{message}</p>)}</div>}
     {pending.length > 0 && <><div className="table-shell"><table><thead><tr><th>File</th><th>Spectrum type</th><th>Scans</th><th>Condition / current / replicate</th></tr></thead><tbody>{pending.map((item, index) => {
       const metadata = inferMetadataFromFilename(item.filename);

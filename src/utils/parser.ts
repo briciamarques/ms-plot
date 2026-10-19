@@ -49,6 +49,7 @@ export const parseSpectrumTxt = (content: string): ParseSpectrumResult => {
 
   const warnings =
     peaks.length === 0 ? ["No valid numeric m/z intensity rows found."] : [];
+  if (invalidLineCount > 0) warnings.push(`${invalidLineCount} numeric-looking rows were skipped; expected exactly two whitespace-separated numeric columns.`);
 
   return {
     peaks,

@@ -2,15 +2,25 @@ import { Download } from "lucide-react";
 import type { ProcessedRow } from "../types";
 import { downloadTextFile, processedRowsToCsv } from "../utils/csv";
 import { formatIntensity, formatMz, formatPercent } from "../utils/format";
+import { useMemo, useState } from "react";
+import { TableTools } from "./TableTools";
+import { safeProjectFilename } from "../utils/project";
 
 type ProcessedDataTableProps = {
   rows: ProcessedRow[];
+  projectName: string;
 };
 
-export function ProcessedDataTable({ rows }: ProcessedDataTableProps) {
+export function ProcessedDataTable({ rows, projectName }: ProcessedDataTableProps) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [warningOnly, setWarningOnly] = useState(false);
+  const matchingRows = useMemo(() => rows.filter(row => (!warningOnly || row.warning) && [row.filename, row.label, String(row.targetMz), ...Object.values(row.metadata)].some(value => value.toLowerCase().includes(query.toLowerCase()))), [rows, query, warningOnly]);
+  const safePage = Math.min(page, Math.max(0, Math.ceil(matchingRows.length / 50) - 1));
+  const basename = safeProjectFilename(projectName).replace(".pdmsplot.json", "-all-data");
   const exportCsv = () => {
     downloadTextFile(
-      "pd-ms-processed-data.csv",
+      `${basename}.csv`,
       processedRowsToCsv(rows),
       "text/csv;charset=utf-8",
     );
@@ -30,14 +40,16 @@ export function ProcessedDataTable({ rows }: ProcessedDataTableProps) {
           disabled={rows.length === 0}
         >
           <Download size={16} aria-hidden="true" />
-          <span>Export CSV</span>
+          <span>All data CSV</span>
         </button>
         <button type="button" className="secondary-button" disabled={!rows.length}
-          onClick={() => downloadTextFile("pd-ms-processed-data.txt", processedRowsToCsv(rows, "\t"), "text/plain;charset=utf-8")}>
-          Export TXT
+          onClick={() => downloadTextFile(`${basename}.txt`, processedRowsToCsv(rows, "\t"), "text/plain;charset=utf-8")}>
+          All data TXT
         </button>
       </div>
 
+      <p className="help-text">Exports include every processed file and ion, including references. Search and pagination only change this table. For plotted values and replicate means, export from Plot.</p>
+      <TableTools query={query} onQuery={setQuery} count={matchingRows.length} page={safePage} onPage={setPage}><label className="checkbox-label"><input type="checkbox" checked={warningOnly} onChange={event => {setWarningOnly(event.target.checked); setPage(0);}} />Warnings only</label></TableTools>
       <div className="table-shell processed-table-shell">
         <table className="data-table processed-table">
           <thead>
@@ -64,14 +76,14 @@ export function ProcessedDataTable({ rows }: ProcessedDataTableProps) {
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {matchingRows.length === 0 ? (
               <tr>
-                <td colSpan={18} className="empty-cell">
-                  No processed rows
+                <td colSpan={20} className="empty-cell">
+                  No matching processed rows
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
+              matchingRows.slice(safePage * 50, (safePage + 1) * 50).map((row) => (
                 <tr key={row.id}>
                   <td className="filename-cell">
                     <span className="filename-truncate" title={row.filename}>
