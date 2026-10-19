@@ -1455,6 +1455,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
                       setLegendPosition("inside"); setLegendInsideX(Number(event.target.value));
                     }}
                   />
+                  <span className="help-text">Esquerda ← → Direita. No máximo, a legenda encosta na borda direita do gráfico.</span>
                 </label>
 
                 <label>

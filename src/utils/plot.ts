@@ -829,14 +829,20 @@ export const insideLegendColumns = (
   });
   const totalWidth = widths.reduce((sum, width) => sum + width, 0);
   const available = Math.max(1, plotWidth);
-  const startX = Math.max(0, 1 - totalWidth / available) * Math.max(0, Math.min(1, x));
+  const position = Math.max(0, Math.min(1, x));
+  const travel = Math.max(0, 1 - totalWidth / available);
+  const anchorRight = position > 0.5;
+  const startX = travel * position;
+  const endX = 1 - travel * (1 - position);
   const legends: Record<string, Record<string, unknown>> = {};
   let offset = 0;
   const legendName = (column: number) => column === 0 ? "legend" : `legend${column + 1}`;
   widths.forEach((width, column) => {
     legends[legendName(column)] = {
-      orientation: "v", x: startX + offset / available, y,
-      xanchor: "left", yanchor: y > 0.5 ? "top" : "bottom",
+      // Let Plotly anchor the actual rendered box at the nearest edge.
+      // Estimated label widths are only for spacing columns, not the edge gap.
+      orientation: "v", x: anchorRight ? endX - (totalWidth - offset - width) / available : startX + offset / available, y,
+      xanchor: anchorRight ? "right" : "left", yanchor: y > 0.5 ? "top" : "bottom",
       bgcolor: "rgba(255,255,255,0)", borderwidth: 0, traceorder: "normal",
     };
     offset += width;
