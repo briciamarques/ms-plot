@@ -1,3 +1,5 @@
+import type { PowerCalibration } from "./utils/powerCalibration";
+
 export type Peak = {
   mz: number;
   intensity: number;
@@ -11,6 +13,8 @@ export type SpectrumMetadata = {
   activationTime: string;
   ledPower: string;
   current: string;
+  opticalPower: string;
+  powerCalibration: string;
   voltage: string;
   concentration: string;
   experiment: string;
@@ -93,6 +97,7 @@ export type XAxisKey =
   | "activationTime"
   | "ledPower"
   | "current"
+  | "opticalPower"
   | "voltage"
   | "wavelength"
   | "replicate";
@@ -113,6 +118,7 @@ export type ProjectSnapshot = {
   plotSelectedOnly?: boolean;
   plotSettings?: Record<string, unknown>;
   ionDraft?: string;
+  powerCalibration?: PowerCalibration;
 };
 
 export const metadataFields: Array<{
@@ -144,6 +150,7 @@ export const xAxisOptions: Array<{ key: XAxisKey; label: string }> = [
   { key: "activationTime", label: "Activation time" },
   { key: "ledPower", label: "LED power" },
   { key: "current", label: "Current" },
+  { key: "opticalPower", label: "Optical power" },
   { key: "voltage", label: "Voltage" },
   { key: "wavelength", label: "Wavelength" },
   { key: "replicate", label: "Replicate" },
@@ -169,6 +176,8 @@ export const emptyMetadata = (): SpectrumMetadata => ({
   activationTime: "",
   ledPower: "",
   current: "",
+  opticalPower: "",
+  powerCalibration: "",
   voltage: "",
   concentration: "",
   experiment: "",

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 const output = path.resolve('node_modules/.tmp/thermo-tests');
-for (const name of ['types','utils/id','utils/filenameMetadata','utils/bruker','utils/project','utils/processing','utils/csv','utils/plot','utils/format','utils/colorPalettes','utils/replicates','utils/preview']) {
+for (const name of ['types','utils/id','utils/filenameMetadata','utils/bruker','utils/powerCalibration','utils/project','utils/processing','utils/csv','utils/plot','utils/format','utils/colorPalettes','utils/replicates','utils/preview']) {
   const code = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.ES2020}}).outputText.replace(/from "(\.[^"]+)"/g,'from "$1.mjs"');
   const target=path.join(output,`${name}.mjs`); fs.mkdirSync(path.dirname(target),{recursive:true}); fs.writeFileSync(target,code);
 }

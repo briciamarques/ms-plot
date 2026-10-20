@@ -4,7 +4,7 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import ts from 'typescript';
 const output = path.resolve('node_modules/.tmp/workspace-tests');
-for (const name of ['types','utils/id','utils/project','utils/recovery','utils/ions','utils/parser','hooks/useProjectSession','utils/plot','utils/processing','utils/bruker','utils/colorPalettes','utils/format','utils/filenameMetadata']) {
+for (const name of ['types','utils/id','utils/powerCalibration','utils/project','utils/recovery','utils/ions','utils/parser','hooks/useProjectSession','utils/plot','utils/processing','utils/bruker','utils/colorPalettes','utils/format','utils/filenameMetadata']) {
   const code = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {compilerOptions: {target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ES2020}}).outputText.replace(/from "(\.[^"]+)"/g, 'from "$1.mjs"');
   const target = path.join(output, `${name}.mjs`); fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target, code);
 }

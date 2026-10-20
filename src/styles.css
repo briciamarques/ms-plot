@@ -1203,3 +1203,12 @@ input[aria-invalid="true"] { border-color: #be123c; background: #fff7f8; }
   .table-tools { gap: 8px; }
   .table-tools .secondary-button { width: auto; }
 }
+.power-controls { display: flex; flex-wrap: wrap; gap: 16px; margin: 18px 0; }
+.power-controls label { display: grid; gap: 6px; min-width: 175px; }
+.power-controls select { padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--text); background: white; }
+.power-options { display: grid; gap: 12px; margin: 16px 0; }
+.power-options .checkbox-label { white-space: normal; }
+.power-options input { flex-shrink: 0; }
+.power-calibration-preview { display: block; width: min(100%, 780px); margin: 16px auto; background: #fff; color: #222; font: 12px Arial, sans-serif; }
+.power-calibration .control-button-row { margin: 16px 0; }
+.power-calibration details { margin: 16px 0; }

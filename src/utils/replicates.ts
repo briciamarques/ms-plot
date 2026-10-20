@@ -8,12 +8,14 @@ export function aggregateReplicates(rows: ProcessedRow[], axis: XAxisKey, mode: 
   const groups = new Map<string, ProcessedRow[]>();
   const warnings: string[] = [];
   for (const row of rows) {
-    const metadata = metadataFields.filter(f => !["replicate", "notes", axis].includes(f.key))
+    const metadata = metadataFields.filter(f => !["replicate", "notes", axis, ...(axis === "opticalPower" ? ["current"] : [])].includes(f.key))
       .map(f => [f.key, (row.metadata[f.key] ?? "").trim()]);
     const series = JSON.stringify([row.ionId, row.acquisitionKey ?? "", metadata]);
     const rawX = row.metadata[axis].trim();
     const x = rawX !== "" && Number.isFinite(Number(rawX)) ? String(Number(rawX)) : rawX;
-    const key = JSON.stringify([series, x]);
+    // Current drives calibrated power: connect different currents in one series,
+    // but do not pool distinct currents that happen to have identical powers.
+    const key = JSON.stringify([series, x, ...(axis === "opticalPower" ? [row.metadata.current.trim()] : [])]);
     groups.set(key, [...(groups.get(key) ?? []), { ...row, seriesId: series }]);
   }
   const result: ProcessedRow[] = [];

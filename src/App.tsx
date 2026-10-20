@@ -6,6 +6,7 @@ import { IonSelectionPanel, formatIonText } from "./components/IonSelectionPanel
 import { WorkspacePanelBoundary } from "./components/WorkspacePanelBoundary";
 import { MetadataTable } from "./components/MetadataTable";
 import { ProjectPanel } from "./components/ProjectPanel";
+import { PowerCalibrationPanel } from "./components/PowerCalibrationPanel";
 import { ProcessedDataTable } from "./components/ProcessedDataTable";
 import { SegmentSpectrumExport } from "./components/SegmentSpectrumExport";
 import type { IonTarget, MetadataField, SpectrumFile } from "./types";
@@ -13,6 +14,7 @@ import { emptyMetadata } from "./types";
 import { createId } from "./utils/id";
 import { defaultPlotAppearance } from "./utils/plot";
 import { normalizeIntensities } from "./utils/processing";
+import { calibratedFiles } from "./utils/powerCalibration";
 import { createEmptyProject, createProjectSnapshot, parseProjectSnapshot, safeProjectFilename } from "./utils/project";
 import { downloadTextFile } from "./utils/csv";
 import { fillBlankMetadataFromFilename, inferMetadataFromFilename } from "./utils/filenameMetadata";
@@ -36,10 +38,10 @@ declare global {
 }
 
 const PlotBuilder = lazy(() => import("./components/PlotBuilder").then(module => ({default: module.PlotBuilder})));
-type WorkspaceTab = "files" | "bruker" | "thermo" | "ions" | "plot" | "data";
+type WorkspaceTab = "files" | "bruker" | "thermo" | "power" | "ions" | "plot" | "data";
 const workspaceTabs: {key: WorkspaceTab; label: string}[] = [
   {key: "files", label: "1 · Files & metadata"}, {key: "bruker", label: "Bruker files"},
-  {key: "thermo", label: "Thermo RAW"}, {key: "ions", label: "2 · Ions"},
+  {key: "thermo", label: "Thermo RAW"}, {key: "power", label: "Power calibration"}, {key: "ions", label: "2 · Ions"},
   {key: "plot", label: "3 · Plot"}, {key: "data", label: "4 · Data"},
 ];
 const initialIons: IonTarget[] = [751, 659, 617, 375, 283, 255, 241].map(mass => ({id: createId("ion"), targetMz: String(mass), label: mass === 751 ? "parent ion" : mass === 659 ? "fragment 1" : mass === 617 ? "fragment 2" : mass === 241 ? "main fragment" : ""}));
@@ -61,8 +63,9 @@ function App() {
   const importController = useRef<AbortController>();
   const importEpoch = useRef(0);
   const numericIons = useMemo(() => numericTargets(ions), [ions]);
-  const processing = useProcessedRows(files, numericIons, tolerance);
-  const plottedFiles = useMemo(() => plotSelectedOnly ? files.filter(file => selectedIds.has(file.id)) : files, [files, plotSelectedOnly, selectedIds]);
+  const filesWithPower = useMemo(() => calibratedFiles(files, project.powerCalibration), [files, project.powerCalibration]);
+  const processing = useProcessedRows(filesWithPower, numericIons, tolerance);
+  const plottedFiles = useMemo(() => plotSelectedOnly ? filesWithPower.filter(file => selectedIds.has(file.id)) : filesWithPower, [filesWithPower, plotSelectedOnly, selectedIds]);
   const plottedRows = useMemo(() => plotSelectedOnly ? normalizeIntensities(processing.rows.filter(row => selectedIds.has(row.fileId))) : processing.rows, [processing.rows, plotSelectedOnly, selectedIds]);
   const selectTab = (tab: WorkspaceTab) => { if (tab === "plot") setPlotVisited(true); setActiveWorkspaceTab(tab); };
   const updateIons = (next: IonTarget[]) => patch({ions: next, ionDraft: formatIonText(next)}, "ions");
@@ -193,6 +196,10 @@ function App() {
             patch({selectedFileIds: imported.map(file => file.id), plotSelectedOnly: true}, "import");
             changePlot({...project.plotSettings, xAxis: "wavelength", xTitle: "Wavelength", xUnit: "nm", xValueScale: "raw", xValueMultiplier: 1, xMin: "", xMax: ""}); selectTab("ions");
           } else if (!files.length) changePlot({xAxis: "retentionTime", xTitle: "Acquisition time", xUnit: "s"});
+        }} /></div>
+        <div id="panel-power" role="tabpanel" aria-labelledby="tab-power" hidden={activeWorkspaceTab !== "power"}><PowerCalibrationPanel key={importRevision} files={files} calibration={project.powerCalibration} onChange={powerCalibration => patch({powerCalibration})} onPlot={powerCalibration => {
+          patch({powerCalibration, plotSettings: {...project.plotSettings, xAxis: "opticalPower", xTitle: "Optical power", xUnit: "mW", xValueScale: "raw", xValueMultiplier: 1, xMin: "", xMax: ""}});
+          setPlotRevision(value => value + 1); selectTab("plot");
         }} /></div>
         <div id="panel-ions" role="tabpanel" aria-labelledby="tab-ions" hidden={activeWorkspaceTab !== "ions"}><WorkspacePanelBoundary name="Ions">{() => <IonSelectionPanel ions={ions} ionText={project.ionDraft ?? formatIonText(ions)} onIonTextChange={value => patch({ionDraft: value}, "ionDraft")} tolerance={tolerance} roundingPrecisions={[...new Set(files.flatMap(file => file.bruker?.mzDecimals === undefined ? [] : [file.bruker.mzDecimals]))]} canSuggestIons={files.some(file => file.peaks.length > 0)} onIonsChange={updateIons} onToleranceChange={value => patch({tolerance: value}, "tolerance")} onSuggestIons={decimals => {
           const suggestions = suggestIonTargets(selectedIds.size ? files.filter(file => selectedIds.has(file.id)) : files, tolerance, 6, decimals); if (suggestions.length) updateIons(suggestions);

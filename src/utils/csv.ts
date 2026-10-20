@@ -32,6 +32,7 @@ export const processedRowsToCsv = (rows: ProcessedRow[], delimiter = ","): strin
     "share of selected ions per segment (%)",
     "warning",
     "acquisition time (s)", "segment", "notes", "current (mA)", "voltage (V)", "concentration", "experiment group",
+    "optical power (mW)", "power calibration",
   ];
 
   const csvRows = rows.map((row) => [
@@ -52,6 +53,7 @@ export const processedRowsToCsv = (rows: ProcessedRow[], delimiter = ","): strin
     row.selectedIonPercent,
     row.warning,
     row.metadata.retentionTime, row.metadata.segment, row.metadata.notes, row.metadata.current, row.metadata.voltage, row.metadata.concentration, row.metadata.experiment,
+    row.metadata.opticalPower ?? "", row.metadata.powerCalibration ?? "",
   ]);
 
   return [headers, ...csvRows]
@@ -121,6 +123,7 @@ export const plotRowsToCsv = (
     "share of selected ions per segment (%)",
     "warning",
     "acquisition time (s)", "segment", "notes", "current (mA)", "voltage (V)", "concentration", "experiment group", "n replicates", "sample SD (plot y)", "SEM (plot y)", "source files",
+    "optical power (mW)", "power calibration",
     ...(smoothed ? ["smoothing", "smoothed plot y value"] : []),
   ];
 
@@ -147,6 +150,7 @@ export const plotRowsToCsv = (
     row.warning,
     row.metadata.retentionTime, row.metadata.segment, row.metadata.notes, row.metadata.current, row.metadata.voltage, row.metadata.concentration, row.metadata.experiment,
     row.statistics?.n ?? 1, row.statistics?.sd ?? null, row.statistics?.sem ?? null, row.statistics?.files.join("; ") ?? row.filename,
+    row.metadata.opticalPower ?? "", row.metadata.powerCalibration ?? "",
     ...(smoothed ? [`Centered moving average (${movingAverageWindow} points; symmetric shrinking endpoints)`, smoothed.get(row.id) ?? null] : []),
   ]);
 

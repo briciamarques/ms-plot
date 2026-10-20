@@ -959,6 +959,8 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
               {replicateMode !== "individual" && <p>Equal weight per file. Normalization is applied per file before averaging. Groups match the other metadata and spectrum type; edit Experiment group to separate batches. Missing or repeated replicate IDs are not pooled.</p>}
               {aggregation.warnings.length > 0 && <details open><summary>Replicate warnings ({aggregation.warnings.length})</summary>{aggregation.warnings.map(warning => <p key={warning}>{warning}</p>)}</details>}
               {(xAxis === "current" || xAxis === "voltage") && omittedAxisFiles > 0 && <p role="status">{omittedAxisFiles} files without a numeric {xAxis} are omitted. LED OFF stays in Data; assign a reference coordinate explicitly if you want to plot it.</p>}
+              {xAxis === "opticalPower" && <p role="status">Optical power comes from Power calibration. {omittedAxisFiles > 0 ? `${omittedAxisFiles} files without matching calibration are omitted; review current and wavelength there.` : "Values use the active calibration and background choice."} Vertical error bars describe ion intensity, not power uncertainty.</p>}
+              {xAxis === "opticalPower" && <details><summary>Power calibration used</summary>{[...new Set(axisRows.map(row => row.metadata.powerCalibration).filter(Boolean))].map(method => <p key={method}>{method}</p>)}</details>}
               {omittedWavelengthFiles > 0 && <p role="status">Segments without a positive numeric wavelength: {omittedWavelengthFiles}. Omitted from this plot and its normalization; available in Data and segment spectrum export.</p>}
               <div className="plot-controls">
                 <label>

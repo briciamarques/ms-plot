@@ -59,6 +59,7 @@ export function ProcessedDataTable({ rows, projectName }: ProcessedDataTableProp
               <th>Parent ion</th>
               <th>Condition</th>
               <th>Current (mA)</th><th>Voltage (V)</th>
+              <th>Optical power (mW)</th><th>Power calibration</th>
               <th>Act. Time (ms)</th>
               <th>Activation time</th>
               <th>LED power</th>
@@ -78,7 +79,7 @@ export function ProcessedDataTable({ rows, projectName }: ProcessedDataTableProp
           <tbody>
             {matchingRows.length === 0 ? (
               <tr>
-                <td colSpan={20} className="empty-cell">
+                <td colSpan={22} className="empty-cell">
                   No matching processed rows
                 </td>
               </tr>
@@ -94,6 +95,7 @@ export function ProcessedDataTable({ rows, projectName }: ProcessedDataTableProp
                   <td>{row.metadata.parentIon}</td>
                   <td>{row.metadata.condition}</td>
                   <td>{row.metadata.current}</td><td>{row.metadata.voltage}</td>
+                  <td>{row.metadata.opticalPower}</td><td>{row.metadata.powerCalibration}</td>
                   <td>{row.metadata.acqTime}</td>
                   <td>{row.metadata.activationTime}</td>
                   <td>{row.metadata.ledPower}</td>

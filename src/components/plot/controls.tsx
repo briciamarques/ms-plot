@@ -193,6 +193,7 @@ export const axisLabel = (axis: XAxisKey): string =>
 
 export const defaultXAxisUnit = (axis: XAxisKey): string => {
   if (axis === "current") return "mA";
+  if (axis === "opticalPower") return "mW";
   if (axis === "voltage") return "V";
   if (axis === "retentionTime") return "s";
   if (axis === "acqTime" || axis === "activationTime") {

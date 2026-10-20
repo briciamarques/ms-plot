@@ -77,7 +77,7 @@ const getSortableNumber = (value: string): number | null => {
 
 export const rowsForPlotAxis = (rows: ProcessedRow[], axis: XAxisKey): ProcessedRow[] => {
   if (rows.some(row => row.statistics)) return rows;
-  if (axis === "current" || axis === "voltage") return normalizeIntensities(rows.filter(row => row.metadata[axis].trim() !== "" && Number.isFinite(Number(row.metadata[axis]))));
+  if (axis === "current" || axis === "voltage" || axis === "opticalPower") return normalizeIntensities(rows.filter(row => (row.metadata[axis] ?? "").trim() !== "" && Number.isFinite(Number(row.metadata[axis]))));
   if (axis !== "wavelength") return rows;
   // References have no wavelength. Keep them in the project, but exclude them
   // from wavelength coordinates and from the plotted ions' own-maximum scale.

@@ -1,5 +1,6 @@
 import type { IonTarget, ProjectSnapshot, SpectrumFile } from "../types";
 import { emptyMetadata, xAxisOptions } from "../types";
+import { validatePowerCalibration } from "./powerCalibration";
 
 const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 function requireValue(condition: unknown, message: string): asserts condition {
@@ -13,6 +14,10 @@ function checkPeaks(peaks: unknown, path: string) {
 
 export function validateProjectSnapshot(value: unknown): ProjectSnapshot {
   requireValue(record(value) && value.app === "PD-MS Plot Builder" && value.version === 1 && Array.isArray(value.files) && Array.isArray(value.ions), "unrecognized project format");
+  if (value.powerCalibration !== undefined) {
+    try { validatePowerCalibration(value.powerCalibration); }
+    catch { throw Error("Invalid project: invalid power calibration. Your current project was not replaced."); }
+  }
   const ids = new Set<string>();
   for (const file of value.files) {
     requireValue(record(file) && typeof file.id === "string" && file.id.length > 0 && typeof file.filename === "string", "invalid file identity");
@@ -110,6 +115,7 @@ function normalizeProject(parsed: ProjectSnapshot): ProjectSnapshot {
     })),
     ions: parsed.ions,
     ...(typeof parsed.ionDraft === "string" ? { ionDraft: parsed.ionDraft } : {}),
+    ...(parsed.powerCalibration ? {powerCalibration: parsed.powerCalibration} : {}),
     tolerance:
       typeof parsed.tolerance === "number" && Number.isFinite(parsed.tolerance)
         ? parsed.tolerance

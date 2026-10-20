@@ -1,5 +1,36 @@
 # PD-MS Plot Builder
 
+## Optical power from powermeter calibration
+
+Open **Power calibration** and import one campaign as a ZIP or a selection of CSV
+files from Optical Parameter Monitor. Use names such as
+`280nm_100mA_1s_1.csv` and `280nm_background_1s_1.csv`.
+Choose the wavelength and sample interval, review the table and spectrum matches,
+then click **Aplicar e plotar por potência**. This selects **Optical power (mW)**
+as the plot's X axis. Choose the parent ion in **Ions** to inspect its intensity
+against power.
+
+The driver current comes from the filename, not the sensor's `Current (A)` column.
+Power is the mean of `Power (W)` readings within each CSV, converted to mW, then
+the equally weighted mean of file means at each current. Background subtraction
+is enabled by default and uses the equally weighted mean of background file means
+for the chosen wavelength and background interval. Zero-current files are distinct
+from background. Corrected negative values are retained. The table's sample SD
+describes variation between file means, not total calibration uncertainty.
+
+Sampling intervals are kept separate and are not interpreted as irradiation time.
+Only spectra with matching current and wavelength receive a power coordinate.
+An explicit option allows the chosen wavelength for spectra with blank wavelength
+metadata. Missing current, including LED OFF, is never assumed to be zero.
+Optional linear interpolation works only between measured currents; no extrapolation
+is performed. Changes to current or calibration update power automatically.
+
+The calibration, original power readings and settings travel with the project
+file, local recovery and cloud project save. Data and plotted-data exports include
+power and its calculation provenance. The calibration table can also be downloaded.
+**New project** clears calibration with the other project data. Real experimental
+CSV/ZIP files are not bundled with the public app.
+
 ## Workspace 0.2
 
 On Windows, double-click **Start-PDMS.cmd** to check prerequisites, rebuild stale

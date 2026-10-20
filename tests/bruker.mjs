@@ -6,7 +6,7 @@ import ts from 'typescript';
 
 // Compile the pure processing modules with the installed compiler, without extra dependencies.
 const output = path.resolve('node_modules/.tmp/bruker-tests');
-for (const name of ['types', 'utils/id', 'utils/filenameMetadata', 'utils/bruker', 'utils/project', 'utils/processing', 'utils/csv', 'utils/plot', 'utils/format', 'utils/segmentSpectrum', 'utils/plotLifecycle', 'utils/axisRange', 'utils/colorPalettes']) {
+for (const name of ['types', 'utils/id', 'utils/filenameMetadata', 'utils/bruker', 'utils/powerCalibration','utils/project', 'utils/processing', 'utils/csv', 'utils/plot', 'utils/format', 'utils/segmentSpectrum', 'utils/plotLifecycle', 'utils/axisRange', 'utils/colorPalettes']) {
   const result = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ES2020 },
   }).outputText.replace(/from "(\.[^"]+)"/g, 'from "$1.mjs"');
