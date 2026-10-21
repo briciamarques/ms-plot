@@ -15,6 +15,8 @@ export function readPlotSetting<T>(settings: Record<string, unknown>, key: strin
 export type PlotBuilderProps = {
   rows: ProcessedRow[];
   isActive?: boolean;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
   initialSettings?: Record<string, unknown>;
   settingsRef: { current: Record<string, unknown> };
   onSettingsChange: (settings: Record<string, unknown>) => void;

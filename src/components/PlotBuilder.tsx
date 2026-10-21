@@ -27,8 +27,9 @@ import { readLegendMzDecimals } from "../utils/format";
 
 import { readPlotSetting, type PlotBuilderProps, type PlotTab, type PlotInteraction, type InteractivePlotElement, type StyleTab, type PlotFont, type LineShape, type CurveMode, type TickFormat, type XValueScale, type JournalPresetKey, type FigureContent, type RasterDpi, type PlotStyleSettings, type SavedPlotStyle, MM_PER_INCH, STYLE_PRESETS_STORAGE_KEY, styleTabs, loadSavedPlotStyles, journalPresets, figureContentOptions, rasterDpiOptions, pointsToPixels, pixelsToPoints, pixelsFromMm, mmFromPixels, formatDecimal, axisLabel, defaultXAxisUnit, axisTitleWithUnit, tickFormatValue, normalizeHexColor, type ColorControlProps, ColorControl } from "./plot/controls";
 
-export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings = {}, settingsRef, onSettingsChange, projectName, files, tolerance }: PlotBuilderProps) {
+export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExpandedChange, initialSettings = {}, settingsRef, onSettingsChange, projectName, files, tolerance }: PlotBuilderProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [previewZoom, setPreviewZoom] = useState("fit");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const settingsInitialized = useRef<string | null>(null);
@@ -208,6 +209,8 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
     const maxPreviewWidth =
       previewAreaWidth > 0 ? previewAreaWidth : safeExportWidth;
     const maxPreviewHeight = Math.max(1, previewAreaHeight > 0 ? previewAreaHeight : plotHeight);
+    if (previewZoom === "width") return maxPreviewWidth / safeExportWidth;
+    if (previewZoom !== "fit") return Number(previewZoom);
     const { scale } = fitExportPreview(safeExportWidth, safeExportHeight, maxPreviewWidth, maxPreviewHeight);
 
     return Number.isFinite(scale) && scale > 0 ? scale : 1;
@@ -215,6 +218,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
     plotHeight,
     previewAreaHeight,
     previewAreaWidth,
+    previewZoom,
     previewExportRatio,
     safeExportHeight,
     safeExportWidth,
@@ -926,9 +930,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
 
   return (
     <section className="workspace-section plot-workspace-section">
-      <PlotToolbar disabled={!rows.length} exporting={exporting} collapsed={collapsed} onCollapse={() => setCollapsed(value => !value)} onImage={format => void exportImage(format)} onData={exportPlotCsv} />
-      <MethodSummary files={files} tolerance={tolerance} yMode={yMode} curveMode={curveMode} window={movingAverageWindow} replicateMode={replicateMode} rows={rows.length} />
-      <FitResults traces={plotData} filename={safeProjectFilename(projectName).replace(".pdmsplot.json", "")} />
+      <PlotToolbar disabled={!rows.length} exporting={exporting} collapsed={collapsed} onCollapse={() => setCollapsed(value => !value)} expanded={expanded} onExpand={() => onExpandedChange(!expanded)} previewZoom={previewZoom} onPreviewZoom={setPreviewZoom} onImage={format => void exportImage(format)} onData={exportPlotCsv} />
       {exportError && <p className="validation-notice" role="alert">{exportError}</p>}
       <div className={`plot-workbench ${collapsed ? "settings-collapsed" : ""}`}>
         <aside id="plot-settings" className="plot-settings-panel" aria-label="Plot settings" hidden={collapsed}>
@@ -949,6 +951,8 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
             </button>
           </div>
 
+          <MethodSummary files={files} tolerance={tolerance} yMode={yMode} curveMode={curveMode} window={movingAverageWindow} replicateMode={replicateMode} rows={rows.length} />
+          <FitResults traces={plotData} filename={safeProjectFilename(projectName).replace(".pdmsplot.json", "")} />
           {activeTab === "data" ? (
             <div className="plot-menu">
             <div className="plot-control-group">
@@ -1755,7 +1759,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
                 />
               </label>
 
-              <p>The preview fits the available workspace and always uses the export aspect ratio. Export dimensions control the downloaded image size.</p>
+              <p>Preview zoom only changes the on-screen size. The aspect ratio and downloaded image dimensions stay the same. Use Expand workspace to keep editing beside a larger plot.</p>
             </div>
 
             <div className="style-switches">
@@ -1868,7 +1872,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, initialSettings
             <button type="button" className="secondary-button" onClick={() => setRenderAttempt(value => value + 1)}>Retry plot</button>
             <details><summary>Error details</summary>{plotError}</details>
           </div>}
-          <div className="plot-preview-area" ref={previewAreaRef}>
+          <div className="plot-preview-area" ref={previewAreaRef} tabIndex={0} role="region" aria-label="Plot preview; scroll to explore when zoomed">
             <div
               className={
                 previewExportRatio

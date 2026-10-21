@@ -54,6 +54,7 @@ function App() {
   const selectedIds = useMemo(() => new Set(project.selectedFileIds), [project.selectedFileIds]);
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTab>("files");
   const [plotVisited, setPlotVisited] = useState(false);
+  const [plotExpanded, setPlotExpanded] = useState(false);
   const [plotRevision, setPlotRevision] = useState(0);
   const [importRevision, setImportRevision] = useState(0);
   const plotSettingsRef = useRef<Record<string, unknown>>(project.plotSettings ?? {});
@@ -67,7 +68,18 @@ function App() {
   const processing = useProcessedRows(filesWithPower, numericIons, tolerance);
   const plottedFiles = useMemo(() => plotSelectedOnly ? filesWithPower.filter(file => selectedIds.has(file.id)) : filesWithPower, [filesWithPower, plotSelectedOnly, selectedIds]);
   const plottedRows = useMemo(() => plotSelectedOnly ? normalizeIntensities(processing.rows.filter(row => selectedIds.has(row.fileId))) : processing.rows, [processing.rows, plotSelectedOnly, selectedIds]);
-  const selectTab = (tab: WorkspaceTab) => { if (tab === "plot") setPlotVisited(true); setActiveWorkspaceTab(tab); };
+  const selectTab = (tab: WorkspaceTab) => { if (tab === "plot") setPlotVisited(true); else setPlotExpanded(false); setActiveWorkspaceTab(tab); };
+  useEffect(() => {
+    if (!plotExpanded) return;
+    const exitExpandedView = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) {
+        setPlotExpanded(false);
+        document.getElementById("plot-expand-toggle")?.focus();
+      }
+    };
+    window.addEventListener("keydown", exitExpandedView);
+    return () => window.removeEventListener("keydown", exitExpandedView);
+  }, [plotExpanded]);
   const updateIons = (next: IonTarget[]) => patch({ions: next, ionDraft: formatIonText(next)}, "ions");
   const onPlotSettingsChange = useCallback((settings: Record<string, unknown>) => {
     if (JSON.stringify(currentRef.current.plotSettings ?? {}) !== JSON.stringify(settings)) patch({plotSettings: settings}, "plot");
@@ -129,7 +141,7 @@ function App() {
     resetImports();
     session.restore(createEmptyProject());
     plotSettingsRef.current = {};
-    setPlotRevision(value => value + 1); setPlotVisited(false); setActiveWorkspaceTab("files");
+    setPlotRevision(value => value + 1); setPlotVisited(false); selectTab("files");
     setProjectStatus("Novo projeto criado. Use Undo para voltar ao trabalho anterior antes de fechar a página.");
     window.dispatchEvent(new Event("ms-project-new"));
   };
@@ -156,7 +168,7 @@ function App() {
     return () => { delete window.MSCloudAdapter; };
   });
   if (!session.ready) return <main className="loading-screen" role="status">Restoring your workspace…</main>;
-  return <div className={`app-shell ${activeWorkspaceTab === "plot" ? "plot-view-active" : ""}`}>
+  return <div className={`app-shell ${activeWorkspaceTab === "plot" ? "plot-view-active" : ""} ${activeWorkspaceTab === "plot" && plotExpanded ? "plot-focus-active" : ""}`}>
     <header className="app-header"><div><p className="eyebrow">PD-MS · v0.2.0</p><h1>PD-MS Plot Builder</h1></div><div className="header-stats"><span>{files.length} files</span><span>{numericIons.length} ions</span><span>{processing.rows.length} rows</span></div></header>
     <nav className="workspace-tabs" role="tablist" aria-label="Workspace">{workspaceTabs.map((tab, index) => <button key={tab.key} id={`tab-${tab.key}`} role="tab" type="button" aria-controls={`panel-${tab.key}`} tabIndex={activeWorkspaceTab === tab.key ? 0 : -1} aria-selected={activeWorkspaceTab === tab.key} className={`workspace-tab-button ${activeWorkspaceTab === tab.key ? "active" : ""}`} onClick={() => selectTab(tab.key)} onKeyDown={event => {
       const next = event.key === "ArrowRight" ? (index + 1) % workspaceTabs.length : event.key === "ArrowLeft" ? (index + workspaceTabs.length - 1) % workspaceTabs.length : event.key === "Home" ? 0 : event.key === "End" ? workspaceTabs.length - 1 : -1;
@@ -204,7 +216,7 @@ function App() {
         <div id="panel-ions" role="tabpanel" aria-labelledby="tab-ions" hidden={activeWorkspaceTab !== "ions"}><WorkspacePanelBoundary name="Ions">{() => <IonSelectionPanel ions={ions} ionText={project.ionDraft ?? formatIonText(ions)} onIonTextChange={value => patch({ionDraft: value}, "ionDraft")} tolerance={tolerance} roundingPrecisions={[...new Set(files.flatMap(file => file.bruker?.mzDecimals === undefined ? [] : [file.bruker.mzDecimals]))]} canSuggestIons={files.some(file => file.peaks.length > 0)} onIonsChange={updateIons} onToleranceChange={value => patch({tolerance: value}, "tolerance")} onSuggestIons={decimals => {
           const suggestions = suggestIonTargets(selectedIds.size ? files.filter(file => selectedIds.has(file.id)) : files, tolerance, 6, decimals); if (suggestions.length) updateIons(suggestions);
         }} />}</WorkspacePanelBoundary></div>
-        <div id="panel-plot" role="tabpanel" aria-labelledby="tab-plot" className="plot-panel-host" hidden={activeWorkspaceTab !== "plot"}>{plotVisited && <WorkspacePanelBoundary key={plotRevision} name="Plot">{() => <Suspense fallback={<p role="status">Loading plot tools…</p>}><PlotBuilder initialSettings={project.plotSettings ?? {legendPosition: "top"}} settingsRef={plotSettingsRef} onSettingsChange={onPlotSettingsChange} projectName={projectName} files={plottedFiles} tolerance={tolerance} rows={plottedRows} isActive={activeWorkspaceTab === "plot"} /></Suspense>}</WorkspacePanelBoundary>}</div>
+        <div id="panel-plot" role="tabpanel" aria-labelledby="tab-plot" className="plot-panel-host" hidden={activeWorkspaceTab !== "plot"}>{plotVisited && <WorkspacePanelBoundary key={plotRevision} name="Plot">{() => <Suspense fallback={<p role="status">Loading plot tools…</p>}><PlotBuilder expanded={plotExpanded} onExpandedChange={setPlotExpanded} initialSettings={project.plotSettings ?? {legendPosition: "top"}} settingsRef={plotSettingsRef} onSettingsChange={onPlotSettingsChange} projectName={projectName} files={plottedFiles} tolerance={tolerance} rows={plottedRows} isActive={activeWorkspaceTab === "plot"} /></Suspense>}</WorkspacePanelBoundary>}</div>
         <div id="panel-data" role="tabpanel" aria-labelledby="tab-data" hidden={activeWorkspaceTab !== "data"}><SegmentSpectrumExport files={files} isActive={activeWorkspaceTab === "data"} /><ProcessedDataTable rows={processing.rows} projectName={projectName} /></div>
       </div>
     </main>
