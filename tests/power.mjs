@@ -10,7 +10,7 @@ for (const name of ['types','utils/id','utils/project','utils/powerCalibration',
   const target = path.join(output, `${name}.mjs`); fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target, code);
 }
 const load = name => import(pathToFileURL(path.join(output, `${name}.mjs`)));
-const {parsePowerCsv, readPowerUploads, defaultPowerCalibration, summarizePower, matchPower, calibratedFiles, validatePowerCalibration} = await load('utils/powerCalibration');
+const {parsePowerCsv, readPowerUploads, defaultPowerCalibration, importPowerCalibration, selectPowerWavelength, summarizePower, matchPower, calibratedFiles, validatePowerCalibration} = await load('utils/powerCalibration');
 const {createProjectSnapshot, createEmptyProject, parseProjectSnapshot} = await load('utils/project');
 const {rowsForPlotAxis, buildPlotData} = await load('utils/plot');
 const {processedRowsToCsv, plotRowsToCsv} = await load('utils/csv');
@@ -83,6 +83,39 @@ assert.equal(curve.rows[0].seriesId,curve.rows[1].seriesId);
 assert.equal(buildPlotData(curve.rows,'opticalPower','absolute',true,{colors:{},lineWidth:2,markerSize:5,curveMode:'connect'})[0].x.length,2);
 assert.equal(aggregateReplicates([row,{...otherCurrent,metadata:{...otherCurrent.metadata,opticalPower:'17'}}],'opticalPower','absolute').rows.length,2);
 console.log('PASS: power parsing/ZIP, means/background/SD, intervals, matching/interpolation, project persistence, plot/CSV and replicates.');
+
+const csv365 = (powers, interval = 1) => csv(powers, interval).replace('280 nm','365 nm');
+const records365 = [
+  parsePowerCsv('365nm_1000mA_0.1s_1.csv',csv365([.1],.1)),
+  parsePowerCsv('365nm_0mA_1s_1.csv',csv365([.002])),
+  parsePowerCsv('365nm_1000mA_1s_1.csv',csv365([.1])),
+  parsePowerCsv('365nm_background_1s_1.csv',csv365([.001])),
+  parsePowerCsv('365nm_finalbackground_1s_1.csv',csv365([.003])),
+];
+assert.equal(records365[4].currentMa,null);
+assert.equal(records365[4].backgroundPhase,'final');
+const combined = importPowerCalibration(config,records365);
+assert.equal(combined.measurements.length,records.length+records365.length);
+assert.equal(combined.wavelengthNm,365);
+assert.equal(combined.intervalSeconds,1);
+assert.equal(combined.backgroundSource,'initial');
+assert.equal(combined.enabled,false);
+near(summarizePower(combined).points[1].powerMw,99);
+near(summarizePower({...combined,backgroundSource:'final'}).points[1].powerMw,97);
+near(summarizePower({...combined,backgroundSource:'both'}).points[1].powerMw,98);
+assert.ok(summarizePower({...config,backgroundSource:'both'}).error);
+const legacy = {...config,backgroundSource:undefined,measurements:records.map(({backgroundPhase,...rest})=>rest)};
+near(summarizePower(legacy).backgroundMw,3);
+const selected280 = selectPowerWavelength({...combined,assumeWavelength:true,enabled:true},280);
+assert.equal(selected280.assumeWavelength,false);
+assert.equal(selected280.enabled,false);
+near(summarizePower(selected280).backgroundMw,3);
+assert.equal(importPowerCalibration(combined,records365).measurements.length,combined.measurements.length);
+assert.deepEqual(parseProjectSnapshot(JSON.stringify({...project,powerCalibration:combined})).powerCalibration,combined);
+assert.throws(()=>validatePowerCalibration({...combined,backgroundSource:'invalid'}),/background/);
+assert.throws(()=>validatePowerCalibration({...combined,measurements:[{...records365[0],backgroundPhase:'final'}]}),/phase/);
+assert.ok(calibratedFiles([{...file,metadata:{...file.metadata,wavelength:'365',current:'1000'}}],{...combined,enabled:true})[0].metadata.powerCalibration.includes('initial'));
+console.log('PASS: 365 nm finalbackground, separate baselines, legacy baseline, current-sweep default, wavelength imports and persistence.');
 
 // Optional local source audit. No experimental files are copied into the repository.
 if (process.argv[2]) {

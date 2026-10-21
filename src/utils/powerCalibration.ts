@@ -8,12 +8,14 @@ export type PowerMeasurement = {
   intervalSeconds: number;
   replicate: string;
   powersW: number[];
+  backgroundPhase?: "initial" | "final";
 };
 export type PowerCalibration = {
   measurements: PowerMeasurement[];
   wavelengthNm: number;
   intervalSeconds: number;
   backgroundIntervalSeconds: number;
+  backgroundSource?: "initial" | "final" | "both";
   subtractBackground: boolean;
   interpolate: boolean;
   assumeWavelength: boolean;
@@ -38,7 +40,7 @@ function csvCells(line: string, delimiter: string): string[] {
 
 export function parsePowerCsv(filename: string, content: string): PowerMeasurement {
   const name = filename.split(/[\\/]/).pop()!;
-  const match = name.match(/^(\d+(?:[p.]\d+)?)nm_(background|\d+(?:[p.]\d+)?mA)_(\d+(?:[p.]\d+)?)s_(\d+)\.csv$/i);
+  const match = name.match(/^(\d+(?:[p.]\d+)?)nm_(background|finalbackground|\d+(?:[p.]\d+)?mA)_(\d+(?:[p.]\d+)?)s_(\d+)\.csv$/i);
   if (!match) throw Error(`${name}: use nomes como 280nm_100mA_1s_1.csv ou 280nm_background_1s_1.csv.`);
   const numeric = (s: string) => Number(s.replace(/p/i, "."));
   const wavelengthNm = numeric(match[1]), intervalSeconds = numeric(match[3]);
@@ -65,7 +67,9 @@ export function parsePowerCsv(filename: string, content: string): PowerMeasureme
     powersW.push(Number(value));
   }
   if (!powersW.length) throw Error(`${name}: nenhuma leitura Power (W).`);
-  return {filename: name, wavelengthNm, intervalSeconds, currentMa: /^background$/i.test(match[2]) ? null : numeric(match[2].slice(0, -2)), replicate: String(Number(match[4])), powersW};
+  const isBackground = /background$/i.test(match[2]);
+  return {filename: name, wavelengthNm, intervalSeconds, currentMa: isBackground ? null : numeric(match[2].slice(0, -2)), replicate: String(Number(match[4])), powersW,
+    ...(isBackground ? {backgroundPhase: /^final/i.test(match[2]) ? "final" as const : "initial" as const} : {})};
 }
 
 export async function readPowerUploads(files: File[]): Promise<PowerMeasurement[]> {
@@ -95,30 +99,55 @@ export async function readPowerUploads(files: File[]): Promise<PowerMeasurement[
 function assertUniqueMeasurements(records: PowerMeasurement[]) {
   const keys = new Set<string>();
   for (const r of records) {
-    const key = JSON.stringify([r.wavelengthNm, r.intervalSeconds, r.currentMa, r.replicate]);
+    const key = JSON.stringify([r.wavelengthNm, r.intervalSeconds, r.currentMa, r.replicate, r.currentMa === null ? r.backgroundPhase ?? "initial" : ""]);
     if (keys.has(key)) throw Error(`${r.filename}: repetição duplicada para a mesma corrente, wavelength e intervalo. Importe uma campanha de calibração por vez.`);
     keys.add(key);
   }
 }
 
 export function defaultPowerCalibration(measurements: PowerMeasurement[]): PowerCalibration {
-  const first = [...measurements].filter(m => m.currentMa !== null).sort((a, b) => a.wavelengthNm - b.wavelengthNm || a.intervalSeconds - b.intervalSeconds)[0];
+  const groups = new Map<string, {first: PowerMeasurement; currents: Set<number>}>();
+  for (const m of measurements) {
+    if (m.currentMa === null) continue;
+    const key = JSON.stringify([m.wavelengthNm, m.intervalSeconds]);
+    const group = groups.get(key) ?? {first: m, currents: new Set<number>()};
+    group.currents.add(m.currentMa); groups.set(key, group);
+  }
+  // Prefer a current sweep over a single-current sampling-interval experiment.
+  const first = [...groups.values()].sort((a, b) => b.currents.size - a.currents.size || a.first.wavelengthNm - b.first.wavelengthNm || a.first.intervalSeconds - b.first.intervalSeconds)[0]?.first;
   if (!first) throw Error("Importe também medições com corrente, além do background.");
-  return {measurements, wavelengthNm: first.wavelengthNm, intervalSeconds: first.intervalSeconds, backgroundIntervalSeconds: first.intervalSeconds, subtractBackground: true, interpolate: false, assumeWavelength: false, enabled: false};
+  return {measurements, wavelengthNm: first.wavelengthNm, intervalSeconds: first.intervalSeconds, backgroundIntervalSeconds: first.intervalSeconds, backgroundSource: "initial", subtractBackground: true, interpolate: false, assumeWavelength: false, enabled: false};
+}
+
+export function importPowerCalibration(previous: PowerCalibration | undefined, incoming: PowerMeasurement[]): PowerCalibration {
+  const wavelengths = new Set(incoming.map(m => m.wavelengthNm));
+  const measurements = [...(previous?.measurements.filter(m => !wavelengths.has(m.wavelengthNm)) ?? []), ...incoming];
+  if (measurements.length > 2000) throw Error("Limite de 2000 CSVs por projeto. Use projetos separados para campanhas maiores.");
+  assertUniqueMeasurements(measurements);
+  return {...defaultPowerCalibration(incoming), measurements};
+}
+
+export function selectPowerWavelength(config: PowerCalibration, wavelengthNm: number): PowerCalibration {
+  const defaults = defaultPowerCalibration(config.measurements.filter(m => m.wavelengthNm === wavelengthNm));
+  return {...config, wavelengthNm, intervalSeconds: defaults.intervalSeconds, backgroundIntervalSeconds: defaults.backgroundIntervalSeconds, assumeWavelength: false, enabled: false};
 }
 
 export function summarizePower(config: PowerCalibration) {
   const measured = config.measurements.filter(m => m.wavelengthNm === config.wavelengthNm && m.intervalSeconds === config.intervalSeconds && m.currentMa !== null);
-  const backgrounds = config.measurements.filter(m => m.wavelengthNm === config.wavelengthNm && m.intervalSeconds === config.backgroundIntervalSeconds && m.currentMa === null);
+  const availableBackgrounds = config.measurements.filter(m => m.wavelengthNm === config.wavelengthNm && m.intervalSeconds === config.backgroundIntervalSeconds && m.currentMa === null);
+  const initialBackgrounds = availableBackgrounds.filter(m => (m.backgroundPhase ?? "initial") === "initial");
+  const finalBackgrounds = availableBackgrounds.filter(m => m.backgroundPhase === "final");
+  const source = config.backgroundSource ?? "initial";
+  const backgrounds = source === "both" ? availableBackgrounds : source === "final" ? finalBackgrounds : initialBackgrounds;
   const backgroundMw = backgrounds.length ? mean(backgrounds.map(m => mean(m.powersW) * 1000)) : null;
-  const error = config.subtractBackground && backgroundMw === null ? "Não há background para este wavelength e intervalo. Escolha um intervalo de background disponível ou use a leitura bruta." : !measured.length ? "Não há medições de corrente nesta série." : "";
+  const error = config.subtractBackground && (backgroundMw === null || source === "both" && (!initialBackgrounds.length || !finalBackgrounds.length)) ? "Não há background da origem escolhida para este wavelength e intervalo. Escolha uma origem e intervalo disponíveis ou use a leitura bruta." : !measured.length ? "Não há medições de corrente nesta série." : "";
   const points: PowerPoint[] = [...new Set(measured.map(m => m.currentMa!))].sort((a, b) => a - b).map(currentMa => {
     const group = measured.filter(m => m.currentMa === currentMa);
     const means = group.map(m => mean(m.powersW) * 1000);
     const rawMw = mean(means);
     return {currentMa, rawMw, powerMw: rawMw - (config.subtractBackground ? backgroundMw ?? 0 : 0), sdMw: sd(means), n: means.length, samples: group.reduce((n, r) => n + r.powersW.length, 0)};
   });
-  return {points, backgroundMw, backgroundN: backgrounds.length, error};
+  return {points, backgroundMw, backgroundN: backgrounds.length, initialBackgroundMw: initialBackgrounds.length ? mean(initialBackgrounds.map(m => mean(m.powersW) * 1000)) : null, finalBackgroundMw: finalBackgrounds.length ? mean(finalBackgrounds.map(m => mean(m.powersW) * 1000)) : null, error};
 }
 
 function metadataNumber(text: string, unit: string): number | null {
@@ -147,7 +176,7 @@ export function calibratedFiles(files: SpectrumFile[], config?: PowerCalibration
   const summary = summarizePower(config);
   return files.map(file => {
     const match = matchPower(file, config, summary);
-    const provenance = `${config.wavelengthNm} nm; sample interval ${config.intervalSeconds} s; ${config.subtractBackground ? `background ${summary.backgroundMw} mW (${config.backgroundIntervalSeconds} s)` : "raw power"}; ${"method" in match ? match.method : match.reason}${!file.metadata.wavelength.trim() && config.assumeWavelength ? "; wavelength assumed by user" : ""}`;
+    const provenance = `${config.wavelengthNm} nm; sample interval ${config.intervalSeconds} s; ${config.subtractBackground ? `background ${summary.backgroundMw} mW (${config.backgroundIntervalSeconds} s, ${config.backgroundSource ?? "initial"})` : "raw power"}; ${"method" in match ? match.method : match.reason}${!file.metadata.wavelength.trim() && config.assumeWavelength ? "; wavelength assumed by user" : ""}`;
     return {...file, metadata: {...file.metadata, opticalPower: "powerMw" in match ? String(match.powerMw) : "", powerCalibration: provenance}};
   });
 }
@@ -155,10 +184,12 @@ export function calibratedFiles(files: SpectrumFile[], config?: PowerCalibration
 export function validatePowerCalibration(value: unknown): PowerCalibration {
   if (!value || typeof value !== "object") throw Error("Invalid power calibration");
   const c = value as PowerCalibration;
+  if (c.backgroundSource !== undefined && !["initial", "final", "both"].includes(c.backgroundSource)) throw Error("Invalid background source");
   if (![c.wavelengthNm, c.intervalSeconds, c.backgroundIntervalSeconds].every(positive) ||
     !["subtractBackground", "interpolate", "assumeWavelength", "enabled"].every(key => typeof c[key as keyof PowerCalibration] === "boolean") ||
     !Array.isArray(c.measurements) || !c.measurements.length || c.measurements.length > 2000) throw Error("Invalid power calibration settings");
   for (const r of c.measurements) {
+    if (r?.backgroundPhase !== undefined && (r.currentMa !== null || !["initial", "final"].includes(r.backgroundPhase))) throw Error("Invalid background phase");
     if (!r || typeof r.filename !== "string" || typeof r.replicate !== "string" || !r.replicate ||
       !positive(r.wavelengthNm) || !positive(r.intervalSeconds) ||
       !(r.currentMa === null || typeof r.currentMa === "number" && Number.isFinite(r.currentMa) && r.currentMa >= 0) ||

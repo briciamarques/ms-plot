@@ -5,6 +5,11 @@
 Open **Power calibration** and import one campaign as a ZIP or a selection of CSV
 files from Optical Parameter Monitor. Use names such as
 `280nm_100mA_1s_1.csv` and `280nm_background_1s_1.csv`.
+The same format supports 365 nm and other wavelengths. Importing another LED
+retains existing wavelengths and replaces only wavelengths present in the new
+upload, so upload the complete campaign for each LED. The interval with the most
+distinct currents is initially selected. Switching wavelength resets the interval
+to its current sweep and requires applying the calibration again.
 Choose the wavelength and sample interval, review the table and spectrum matches,
 then click **Aplicar e plotar por potência**. This selects **Optical power (mW)**
 as the plot's X axis. Choose the parent ion in **Ions** to inspect its intensity
@@ -15,7 +20,12 @@ Power is the mean of `Power (W)` readings within each CSV, converted to mW, then
 the equally weighted mean of file means at each current. Background subtraction
 is enabled by default and uses the equally weighted mean of background file means
 for the chosen wavelength and background interval. Zero-current files are distinct
-from background. Corrected negative values are retained. The table's sample SD
+from background. Files named `finalbackground` are retained separately; initial
+background remains the default. The background selector can use initial, final,
+or the equally weighted mean of all initial and final background file means.
+This selection is included in project persistence and CSV provenance. Legacy
+projects with no background phase are treated as initial background.
+Corrected negative values are retained. The table's sample SD
 describes variation between file means, not total calibration uncertainty.
 
 Sampling intervals are kept separate and are not interpreted as irradiation time.
