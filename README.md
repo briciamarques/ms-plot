@@ -1,47 +1,47 @@
 # PD-MS Plot Builder
 
-## Optical power from powermeter calibration
+## Optical power from saved measurements
 
-Open **Power calibration** and import one campaign as a ZIP or a selection of CSV
-files from Optical Parameter Monitor. Use names such as
-`280nm_100mA_1s_1.csv` and `280nm_background_1s_1.csv`.
-The same format supports 365 nm and other wavelengths. Importing another LED
-retains existing wavelengths and replaces only wavelengths present in the new
-upload, so upload the complete campaign for each LED. The interval with the most
-distinct currents is initially selected. Switching wavelength resets the interval
-to its current sweep and requires applying the calibration again.
-Choose the wavelength and sample interval, review the table and spectrum matches,
-then click **Aplicar e plotar por potência**. This selects **Optical power (mW)**
-as the plot's X axis. Choose the parent ion in **Ions** to inspect its intensity
-against power.
+The app bundles the previously supplied 280 nm (70 CSVs) and 365 nm (146 CSVs)
+measurements. New projects and projects without a calibration automatically use
+these measurements. Choose **Plot → Data → Text and axes → x axis → Optical power**;
+the current and wavelength in each spectrum select the matching measured power.
+The defaults use the 1 s current sweeps (12 currents at 280 nm, 22 at 365 nm),
+subtract the initial background and do not interpolate or assume a missing wavelength.
+The interval is the powermeter sampling interval, not irradiation time.
 
-The driver current comes from the filename, not the sensor's `Current (A)` column.
-Power is the mean of `Power (W)` readings within each CSV, converted to mW, then
-the equally weighted mean of file means at each current. Background subtraction
-is enabled by default and uses the equally weighted mean of background file means
-for the chosen wavelength and background interval. Zero-current files are distinct
-from background. Files named `finalbackground` are retained separately; initial
-background remains the default. The background selector can use initial, final,
-or the equally weighted mean of all initial and final background file means.
-This selection is included in project persistence and CSV provenance. Legacy
-projects with no background phase are treated as initial background.
-Corrected negative values are retained. The table's sample SD
-describes variation between file means, not total calibration uncertainty.
+**Saved power calibration**, a collapsed box in Plot → Data, shows the measured
+current-to-power table. There is no separate upload workspace. Existing projects
+retain their calibration, including custom settings and explicitly disabled
+calibration. The box lets the user adopt the site's current measurements or disable
+calibration for that project. New project keeps the site's defaults available.
 
-Sampling intervals are kept separate and are not interpreted as irradiation time.
-Only spectra with matching current and wavelength receive a power coordinate.
-An explicit option allows the chosen wavelength for spectra with blank wavelength
-metadata. Missing current, including LED OFF, is never assumed to be zero.
-Optional linear interpolation works only between measured currents; no extrapolation
-is performed. Changes to current or calibration update power automatically.
+Calculations average readings within each CSV, then average replicate CSV means
+with equal weight per file, and subtract the matching background mean. Negative
+corrected powers are retained. Vertical error bars describe spectrum intensity,
+not power uncertainty. Missing/unsupported wavelengths and unmeasured currents do
+not receive a power value. These points are omitted only from an optical-power plot.
+Original measurements and settings travel with project downloads, recovery and cloud
+saves; data exports retain the calculation provenance.
 
-The calibration, original power readings and settings travel with the project
-file, local recovery and cloud project save. Data and plotted-data exports include
-power and its calculation provenance. The calibration table can also be downloaded.
-**New project** clears calibration with the other project data. Real experimental
-CSV/ZIP files are not bundled with the public app.
+To update the site's defaults from a complete new set of measurements, run:
+
+```powershell
+node scripts/update_power_defaults.mjs 'path/to/280nm.zip' 'path/to/365nm.zip'
+node tests/power.mjs
+```
+
+This regenerates `src/data/powerMeasurements.ts`, including the source filenames
+and SHA-256 checksums, without copying personal filesystem paths. Review the changed
+measurements before publishing. Previously saved projects keep their own copy until
+the user chooses **Usar medições atuais do site**.
 
 ## Workspace 0.2
+
+The interface uses cream surfaces, forest green navigation and burgundy export
+actions. Plot's Data and Style controls are collapsed disclosure boxes, so each
+group can be edited independently without filling the sidebar with technical text.
+Calculation provenance remains in data exports and saved projects.
 
 On Windows, double-click **Start-PDMS.cmd** to check prerequisites, rebuild stale
 assets, start the loopback reader if necessary, and open the local site.
@@ -49,7 +49,11 @@ assets, start the loopback reader if necessary, and open the local site.
 Python, Node and the installed project dependencies are required. ProteoWizard is
 only required for Thermo RAW. Reader logs are under `node_modules/.tmp/pdms-reader.log`.
 
-The Project bar keeps save/open and **Undo / Redo** visible. The last 30 edit
+The compact top bar groups workspace navigation and project controls on the left.
+Open **Project** to rename, save/open, create a project, or use **Undo / Redo**.
+The navigation menu includes file, ion and row counts; project recovery and download
+status appear inside **Project**. Menus close with Escape or a click outside.
+The last 30 edit
 groups are retained during the current session, including file removal, bulk
 metadata changes, ion replacement, project opening and plot settings. Consecutive
 edits to one field are grouped. Opening a valid project can be undone; invalid
@@ -428,3 +432,45 @@ Sem ativar o botão, **Start-PDMS.cmd** continua iniciando o leitor e abrindo o 
 Em outro computador, instale primeiro o projeto e suas dependências (Python, Node.js e ProteoWizard com suporte Thermo). O botão não é um instalador dessas dependências. Use **Desativar-botao-PDMS.cmd** antes de mover a instalação; depois ative na nova pasta.
 
 O protocolo `pdmsplot` é registrado somente em `HKEY_CURRENT_USER\Software\Classes`, sem administrador. Ele chama um script local fixo e não repassa nenhum conteúdo da URL para comandos. Erros aparecem em uma mensagem do Windows e no arquivo `node_modules/.tmp/pdms-site-button.log`.
+
+
+## Thermo scan intervals
+
+The reader launch buttons stay visible; setup and troubleshooting instructions
+start collapsed and can be expanded with their disclosure arrow.
+
+In **Thermo RAW**, expand **Intervalos de scans** for a previewed or already
+imported file. Enter inclusive ranges such as `20-80, 100-140`, or leave the field
+blank for every scan, then click **Aplicar intervalos**. Numbers refer to one-based
+positions within the selected spectrum type, not global RAW scan IDs. Overlapping
+ranges are merged so no scan is counted twice. Changing the preview's spectrum
+type resets its ranges. Unapplied or invalid preview edits block adding files.
+
+**Inspecionar intensidade por scan** shows acquisition times and the maximum
+intensity within the current tolerance of a chosen m/z, plus the proposed mean
+and the all-scan mean. Its m/z field only changes this inspection. The applied
+selection is shared by every target ion in that file. Included scans without
+signal still count as zero. Plot SD/SEM continues to describe independent file
+replicates, not individual scans. Choose intervals using acquisition-quality
+criteria and document the reason; minimizing replicate error alone can bias results.
+
+Original scans are retained. Existing projects without a selection use all scans.
+Selections can be undone, restored to all scans, and saved in the project. Data
+and Plot CSV/TXT exports contain a JSON provenance column with each source file,
+spectrum channel, scan ranges, selected/total scan counts and selection reason,
+including when replicate rows have been combined.
+
+### Adjust scans while viewing the plot
+
+In **Plot → Ajustar scans no gráfico**, choose a RAW file and edit its intervals.
+**Atualizar automaticamente** is enabled by default: a valid edit is applied after
+300 ms without typing. This changes the project's selection and can be undone;
+disable the checkbox to use **Aplicar intervalos** manually. Incomplete or invalid
+ranges do not replace the applied selection. Only files in the current plot's
+selection are offered. The current axes, normalization and replicate SD/SEM apply.
+
+Range-only updates send the small selection to the processing worker and reuse
+cached per-scan intensities, avoiding another transfer/extraction of the full
+spectra. The first extraction and changes to ions/tolerance still require calculation.
+While processing, the last plot remains visible with an updating notice and export
+is disabled. Actual latency depends on data size and plot complexity.

@@ -6,15 +6,16 @@ import { IonSelectionPanel, formatIonText } from "./components/IonSelectionPanel
 import { WorkspacePanelBoundary } from "./components/WorkspacePanelBoundary";
 import { MetadataTable } from "./components/MetadataTable";
 import { ProjectPanel } from "./components/ProjectPanel";
-import { PowerCalibrationPanel } from "./components/PowerCalibrationPanel";
+import { WorkspaceNavigation, type WorkspaceTab } from "./components/WorkspaceNavigation";
 import { ProcessedDataTable } from "./components/ProcessedDataTable";
 import { SegmentSpectrumExport } from "./components/SegmentSpectrumExport";
-import type { IonTarget, MetadataField, SpectrumFile } from "./types";
+import type { IonTarget, MetadataField, ScanRange, SpectrumFile } from "./types";
 import { emptyMetadata } from "./types";
 import { createId } from "./utils/id";
 import { defaultPlotAppearance } from "./utils/plot";
 import { normalizeIntensities } from "./utils/processing";
 import { calibratedFiles } from "./utils/powerCalibration";
+import { withSavedPowerCalibration } from "./utils/savedPowerCalibration";
 import { createEmptyProject, createProjectSnapshot, parseProjectSnapshot, safeProjectFilename } from "./utils/project";
 import { downloadTextFile } from "./utils/csv";
 import { fillBlankMetadataFromFilename, inferMetadataFromFilename } from "./utils/filenameMetadata";
@@ -38,17 +39,11 @@ declare global {
 }
 
 const PlotBuilder = lazy(() => import("./components/PlotBuilder").then(module => ({default: module.PlotBuilder})));
-type WorkspaceTab = "files" | "bruker" | "thermo" | "power" | "ions" | "plot" | "data";
-const workspaceTabs: {key: WorkspaceTab; label: string}[] = [
-  {key: "files", label: "1 · Files & metadata"}, {key: "bruker", label: "Bruker files"},
-  {key: "thermo", label: "Thermo RAW"}, {key: "power", label: "Power calibration"}, {key: "ions", label: "2 · Ions"},
-  {key: "plot", label: "3 · Plot"}, {key: "data", label: "4 · Data"},
-];
 const initialIons: IonTarget[] = [751, 659, 617, 375, 283, 255, 241].map(mass => ({id: createId("ion"), targetMz: String(mass), label: mass === 751 ? "parent ion" : mass === 659 ? "fragment 1" : mass === 617 ? "fragment 2" : mass === 241 ? "main fragment" : ""}));
-const initial = {...createProjectSnapshot("pd-ms-project", [], initialIons, 0.5, []), ionDraft: formatIonText(initialIons)};
+const initial = withSavedPowerCalibration({...createProjectSnapshot("pd-ms-project", [], initialIons, 0.5, []), ionDraft: formatIonText(initialIons)});
 
 function App() {
-  const session = useProjectSession(initial);
+  const session = useProjectSession(initial, withSavedPowerCalibration);
   const {project, patch, currentRef} = session;
   const {files, ions, tolerance, projectName, plotSelectedOnly = false} = project;
   const selectedIds = useMemo(() => new Set(project.selectedFileIds), [project.selectedFileIds]);
@@ -67,7 +62,7 @@ function App() {
   const filesWithPower = useMemo(() => calibratedFiles(files, project.powerCalibration), [files, project.powerCalibration]);
   const processing = useProcessedRows(filesWithPower, numericIons, tolerance);
   const plottedFiles = useMemo(() => plotSelectedOnly ? filesWithPower.filter(file => selectedIds.has(file.id)) : filesWithPower, [filesWithPower, plotSelectedOnly, selectedIds]);
-  const plottedRows = useMemo(() => plotSelectedOnly ? normalizeIntensities(processing.rows.filter(row => selectedIds.has(row.fileId))) : processing.rows, [processing.rows, plotSelectedOnly, selectedIds]);
+  const plottedRows = useMemo(() => plotSelectedOnly ? normalizeIntensities(processing.displayRows.filter(row => selectedIds.has(row.fileId))) : processing.displayRows, [processing.displayRows, plotSelectedOnly, selectedIds]);
   const selectTab = (tab: WorkspaceTab) => { if (tab === "plot") setPlotVisited(true); else setPlotExpanded(false); setActiveWorkspaceTab(tab); };
   useEffect(() => {
     if (!plotExpanded) return;
@@ -83,6 +78,9 @@ function App() {
   const updateIons = (next: IonTarget[]) => patch({ions: next, ionDraft: formatIonText(next)}, "ions");
   const onPlotSettingsChange = useCallback((settings: Record<string, unknown>) => {
     if (JSON.stringify(currentRef.current.plotSettings ?? {}) !== JSON.stringify(settings)) patch({plotSettings: settings}, "plot");
+  }, [currentRef, patch]);
+  const updateScanSelection = useCallback((id: string, scanRanges: ScanRange[] | undefined, scanSelectionReason: string) => {
+    patch({files: currentRef.current.files.map(file => file.id === id && file.thermo ? {...file, thermo: {...file.thermo, scanRanges, scanSelectionReason}} : file)}, `scans:${id}`);
   }, [currentRef, patch]);
   const historyAction = (direction: "undo" | "redo") => { session[direction](); setPlotRevision(value => value + 1); setProjectStatus(direction === "undo" ? "Change undone" : "Change restored"); };
   const changePlot = (settings: Record<string, unknown>) => { patch({plotSettings: settings}, "import"); setPlotRevision(value => value + 1); };
@@ -169,13 +167,12 @@ function App() {
   });
   if (!session.ready) return <main className="loading-screen" role="status">Restoring your workspace…</main>;
   return <div className={`app-shell ${activeWorkspaceTab === "plot" ? "plot-view-active" : ""} ${activeWorkspaceTab === "plot" && plotExpanded ? "plot-focus-active" : ""}`}>
-    <header className="app-header"><div><p className="eyebrow">PD-MS · v0.2.0</p><h1>PD-MS Plot Builder</h1></div><div className="header-stats"><span>{files.length} files</span><span>{numericIons.length} ions</span><span>{processing.rows.length} rows</span></div></header>
-    <nav className="workspace-tabs" role="tablist" aria-label="Workspace">{workspaceTabs.map((tab, index) => <button key={tab.key} id={`tab-${tab.key}`} role="tab" type="button" aria-controls={`panel-${tab.key}`} tabIndex={activeWorkspaceTab === tab.key ? 0 : -1} aria-selected={activeWorkspaceTab === tab.key} className={`workspace-tab-button ${activeWorkspaceTab === tab.key ? "active" : ""}`} onClick={() => selectTab(tab.key)} onKeyDown={event => {
-      const next = event.key === "ArrowRight" ? (index + 1) % workspaceTabs.length : event.key === "ArrowLeft" ? (index + workspaceTabs.length - 1) % workspaceTabs.length : event.key === "Home" ? 0 : event.key === "End" ? workspaceTabs.length - 1 : -1;
-      if (next >= 0) { event.preventDefault(); selectTab(workspaceTabs[next].key); document.getElementById(`tab-${workspaceTabs[next].key}`)?.focus(); }
-    }}>{tab.label}</button>)}</nav>
-    <main className="app-main">
+    <header className="app-header compact-header">
+      <h1>PD-MS <span>Plot Builder</span></h1>
       <ProjectPanel projectName={projectName} status={projectStatus} dirty={session.dirty} backupStatus={session.backupStatus} canUndo={session.canUndo} canRedo={session.canRedo} onUndo={() => historyAction("undo")} onRedo={() => historyAction("redo")} onProjectNameChange={value => patch({projectName: value}, "name")} onSaveProject={saveProject} onLoadProject={loadProject} onNewProject={newProject} />
+      <WorkspaceNavigation activeTab={activeWorkspaceTab} onSelect={selectTab} fileCount={files.length} ionCount={numericIons.length} rowCount={processing.rows.length} />
+    </header>
+    <main className="app-main">
       <div className="workspace-tab-panel active-panel">
         {processing.busy && <div className="processing-status" role="status">Processing spectra in the background… <button type="button" onClick={processing.cancel}>Cancel processing</button></div>}
         {processing.error && <div className="validation-notice" role="alert">{processing.error} <button type="button" onClick={processing.retry}>Retry processing</button></div>}
@@ -192,7 +189,9 @@ function App() {
             onUpdateMetadata={updateMetadata} onApplyBulkMetadata={(field, value) => patch({files: files.map(file => selectedIds.has(file.id) ? {...file, metadata: {...file.metadata, [field]: value}} : file)})}
             onRemoveSelected={() => patch({files: files.filter(file => !selectedIds.has(file.id)), selectedFileIds: []})} />}
         </div>
-        <div id="panel-thermo" role="tabpanel" aria-labelledby="tab-thermo" hidden={activeWorkspaceTab !== "thermo"}><ThermoImport key={importRevision} files={files} onImport={imported => {
+        <div id="panel-thermo" role="tabpanel" aria-labelledby="tab-thermo" hidden={activeWorkspaceTab !== "thermo"}><ThermoImport key={importRevision} files={files} tolerance={tolerance}
+          onScanSelectionChange={updateScanSelection}
+          onImport={imported => {
           const nextIons = files.length === 0 ? [...new Set(imported.map(file => file.metadata.parentIon).filter(Boolean))].map(mz => ({id: createId("ion"), targetMz: mz, label: "precursor"})) : ions;
           patch({files: [...files, ...imported], selectedFileIds: imported.map(file => file.id), plotSelectedOnly: true, ions: nextIons, ionDraft: formatIonText(nextIons)}, "import");
           changePlot({...project.plotSettings, xAxis: "current", xTitle: "Current", xUnit: "mA", xValueScale: "raw", xValueMultiplier: 1, replicateMode: "sd", curveMode: "connect", xMin: "", xMax: "", yMin: "0", yMax: ""}); selectTab("ions");
@@ -209,14 +208,10 @@ function App() {
             changePlot({...project.plotSettings, xAxis: "wavelength", xTitle: "Wavelength", xUnit: "nm", xValueScale: "raw", xValueMultiplier: 1, xMin: "", xMax: ""}); selectTab("ions");
           } else if (!files.length) changePlot({xAxis: "retentionTime", xTitle: "Acquisition time", xUnit: "s"});
         }} /></div>
-        <div id="panel-power" role="tabpanel" aria-labelledby="tab-power" hidden={activeWorkspaceTab !== "power"}><PowerCalibrationPanel key={importRevision} files={files} calibration={project.powerCalibration} onChange={powerCalibration => patch({powerCalibration})} onPlot={powerCalibration => {
-          patch({powerCalibration, plotSettings: {...project.plotSettings, xAxis: "opticalPower", xTitle: "Optical power", xUnit: "mW", xValueScale: "raw", xValueMultiplier: 1, xMin: "", xMax: ""}});
-          setPlotRevision(value => value + 1); selectTab("plot");
-        }} /></div>
         <div id="panel-ions" role="tabpanel" aria-labelledby="tab-ions" hidden={activeWorkspaceTab !== "ions"}><WorkspacePanelBoundary name="Ions">{() => <IonSelectionPanel ions={ions} ionText={project.ionDraft ?? formatIonText(ions)} onIonTextChange={value => patch({ionDraft: value}, "ionDraft")} tolerance={tolerance} roundingPrecisions={[...new Set(files.flatMap(file => file.bruker?.mzDecimals === undefined ? [] : [file.bruker.mzDecimals]))]} canSuggestIons={files.some(file => file.peaks.length > 0)} onIonsChange={updateIons} onToleranceChange={value => patch({tolerance: value}, "tolerance")} onSuggestIons={decimals => {
           const suggestions = suggestIonTargets(selectedIds.size ? files.filter(file => selectedIds.has(file.id)) : files, tolerance, 6, decimals); if (suggestions.length) updateIons(suggestions);
         }} />}</WorkspacePanelBoundary></div>
-        <div id="panel-plot" role="tabpanel" aria-labelledby="tab-plot" className="plot-panel-host" hidden={activeWorkspaceTab !== "plot"}>{plotVisited && <WorkspacePanelBoundary key={plotRevision} name="Plot">{() => <Suspense fallback={<p role="status">Loading plot tools…</p>}><PlotBuilder expanded={plotExpanded} onExpandedChange={setPlotExpanded} initialSettings={project.plotSettings ?? {legendPosition: "top"}} settingsRef={plotSettingsRef} onSettingsChange={onPlotSettingsChange} projectName={projectName} files={plottedFiles} tolerance={tolerance} rows={plottedRows} isActive={activeWorkspaceTab === "plot"} /></Suspense>}</WorkspacePanelBoundary>}</div>
+        <div id="panel-plot" role="tabpanel" aria-labelledby="tab-plot" className="plot-panel-host" hidden={activeWorkspaceTab !== "plot"}>{plotVisited && <WorkspacePanelBoundary key={plotRevision} name="Plot">{() => <Suspense fallback={<p role="status">Loading plot tools…</p>}><PlotBuilder powerCalibration={project.powerCalibration} onPowerCalibrationChange={powerCalibration => patch({powerCalibration})} processingBusy={processing.busy} onScanSelectionChange={updateScanSelection} expanded={plotExpanded} onExpandedChange={setPlotExpanded} initialSettings={project.plotSettings ?? {legendPosition: "top"}} settingsRef={plotSettingsRef} onSettingsChange={onPlotSettingsChange} projectName={projectName} files={plottedFiles} tolerance={tolerance} rows={plottedRows} isActive={activeWorkspaceTab === "plot"} /></Suspense>}</WorkspacePanelBoundary>}</div>
         <div id="panel-data" role="tabpanel" aria-labelledby="tab-data" hidden={activeWorkspaceTab !== "data"}><SegmentSpectrumExport files={files} isActive={activeWorkspaceTab === "data"} /><ProcessedDataTable rows={processing.rows} projectName={projectName} /></div>
       </div>
     </main>

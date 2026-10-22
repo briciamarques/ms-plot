@@ -9,15 +9,16 @@ export function ThermoReaderHelp({ local, connected }: { local: boolean; connect
   };
   return <div className="thermo-reader-help" lang="pt-BR">
     <div className="reader-location">{local ? "Versão neste computador" : "Versão online"}</div>
-    <h3>{connected ? "Como abrir o leitor na próxima vez" : "Como importar seus arquivos RAW"}</h3>
-    <p>Os arquivos Thermo RAW precisam do leitor instalado no computador (ProteoWizard). {local ? "Esta página pode usar esse leitor." : "A versão online não lê RAW sozinha. Use o botão abaixo para iniciar o leitor e abrir a versão local do site."}</p>
     <div className="reader-actions">
       <a className="primary-button" href="pdmsplot://open" onClick={() => setLaunchRequested(true)}>Iniciar leitor e abrir versão local</a>
       <a className="secondary-button" href="http://127.0.0.1:8765" target="_blank" rel="noopener noreferrer">Já iniciei: abrir site local</a>
     </div>
-    <p className="help-text">O primeiro botão funciona no Windows após a ativação abaixo. Se o navegador perguntar, escolha abrir o aplicativo PD-MS. O segundo botão só funciona com o leitor já ligado.</p>
     {launchRequested && <p className="validation-notice" role="status">Pedido enviado ao navegador. Se nada abrir, ative o botão seguindo o passo a passo abaixo ou use Start-PDMS.cmd. Esta página não consegue confirmar se o aplicativo abriu.</p>}
-    <details open={!connected}>
+    <details>
+      <summary>{connected ? "Ajuda: como abrir o leitor na próxima vez" : "Como importar RAW — instruções e solução de problemas"}</summary>
+      <p>Os arquivos Thermo RAW precisam do leitor instalado no computador (ProteoWizard). {local ? "Esta página pode usar esse leitor." : "A versão online não lê RAW sozinha. Use o botão acima para iniciar o leitor e abrir a versão local do site."}</p>
+      <p className="help-text">O primeiro botão funciona no Windows após a ativação abaixo. Se o navegador perguntar, escolha abrir o aplicativo PD-MS. O segundo botão só funciona com o leitor já ligado.</p>
+    <details>
       <summary>Primeira vez? Ative o botão ou abra sem ele</summary>
       <ol>
         <li>Aperte <kbd>Windows</kbd> + <kbd>E</kbd> para abrir o Explorador de Arquivos.</li>
@@ -37,5 +38,6 @@ export function ThermoReaderHelp({ local, connected }: { local: boolean; connect
       <p>“Importação em lote” significa escolher vários arquivos de uma vez, por exemplo todas as réplicas.</p>
     </details>
     <p className="reader-transfer"><strong>Já começou um projeto na versão online?</strong> Use <strong>Save project file</strong> e depois <strong>Open project file</strong> na versão local, ou salve e abra pela sua conta no menu de projetos na nuvem. As duas páginas não compartilham automaticamente os dados do navegador.</p>
+    </details>
   </div>;
 }

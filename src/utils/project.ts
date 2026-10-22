@@ -1,6 +1,7 @@
 import type { IonTarget, ProjectSnapshot, SpectrumFile } from "../types";
 import { emptyMetadata, xAxisOptions } from "../types";
 import { validatePowerCalibration } from "./powerCalibration";
+import { validScanRanges } from "./thermoScans";
 
 const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 function requireValue(condition: unknown, message: string): asserts condition {
@@ -30,6 +31,8 @@ export function validateProjectSnapshot(value: unknown): ProjectSnapshot {
     if (file.thermo !== undefined) {
       const thermo = file.thermo;
       requireValue(record(thermo) && thermo.method === "mean-scan-maximum" && typeof thermo.fingerprint === "string" && typeof thermo.channel === "string" && typeof thermo.instrument === "string" && typeof thermo.mode === "string" && Array.isArray(thermo.scans), `${file.filename} has invalid Thermo data`);
+      if (thermo.scanRanges !== undefined) requireValue(validScanRanges(thermo.scanRanges, thermo.scans.length), `${file.filename} has invalid scan ranges`);
+      if (thermo.scanSelectionReason !== undefined) requireValue(typeof thermo.scanSelectionReason === "string", `${file.filename} has an invalid scan selection reason`);
       for (const scan of thermo.scans) {
         requireValue(record(scan) && finite(scan.timeSeconds), `${file.filename} has an invalid scan`);
         checkPeaks(scan.peaks, `${file.filename} scan`);

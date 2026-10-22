@@ -1,5 +1,5 @@
-import { FilePlus2, FolderOpen, Save } from "lucide-react";
-import { useState, type ChangeEvent } from "react";
+import { ChevronDown, FilePlus2, FolderOpen, Save } from "lucide-react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 
 type ProjectPanelProps = {
   projectName: string;
@@ -25,7 +25,18 @@ export function ProjectPanel({
   onNewProject,
   dirty, backupStatus, canUndo, canRedo, onUndo, onRedo,
 }: ProjectPanelProps) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   const [showNewProject, setShowNewProject] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !menuRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [open]);
   const startNew = (download: boolean) => {
     if (download) onSaveProject();
     onNewProject();
@@ -40,7 +51,21 @@ export function ProjectPanel({
   };
 
   return (
-    <section className="workspace-section project-panel" aria-label="Project">
+    <div className="project-menu" ref={menuRef}
+      onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}
+      onKeyDown={event => {
+        if (event.key === "Escape" && open) {
+          event.preventDefault(); setOpen(false); toggleRef.current?.focus();
+        }
+      }}>
+    <button ref={toggleRef} type="button" className="workspace-nav-toggle project-menu-toggle"
+      aria-expanded={open} aria-controls="project-menu-panel" onClick={() => setOpen(value => !value)}>
+      <FolderOpen size={16} aria-hidden="true" /><span>Project</span>
+      <span className="project-menu-name">{projectName || "Untitled"}</span>
+      {dirty && <span className="project-dirty-indicator" role="img" aria-label="Changes since last project download" />}
+      <ChevronDown size={14} aria-hidden="true" />
+    </button>
+    <section id="project-menu-panel" className="workspace-section project-panel" aria-label="Project" hidden={!open}>
       <div className="project-actions">
         <label>
           <span>Project name</span>
@@ -84,5 +109,6 @@ export function ProjectPanel({
       </div>}
       <div className="project-status" role="status"><span className={dirty ? "unsaved" : ""}>{dirty ? "Changes since last project download" : "Project download up to date"}</span><span>{backupStatus}</span>{status && <span>{status}</span>}</div>
     </section>
+    </div>
   );
 }

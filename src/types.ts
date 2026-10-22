@@ -5,6 +5,13 @@ export type Peak = {
   intensity: number;
 };
 
+/** Inclusive, one-based positions within the selected Thermo spectrum channel. */
+export type ScanRange = { start: number; end: number };
+export type ThermoSelectionUpdate = { id: string; scanRanges?: ScanRange[]; scanSelectionReason?: string };
+export type ThermoScanSelection = {
+  filename: string; channel: string; ranges: string; selected: number; total: number; reason: string;
+};
+
 export type SpectrumMetadata = {
   compound: string;
   parentIon: string;
@@ -42,6 +49,8 @@ export type SpectrumFile = {
     instrument: string;
     mode: string;
     scans: Array<{ timeSeconds: number; peaks: Peak[] }>;
+    scanRanges?: ScanRange[];
+    scanSelectionReason?: string;
     method: "mean-scan-maximum";
   };
   bruker?: {
@@ -87,6 +96,7 @@ export type ProcessedRow = {
   selectedIonPercent: number;
   warning: string;
   acquisitionKey?: string;
+  thermoScanSelections?: ThermoScanSelection[];
   statistics?: { n: number; sd: number | null; sem: number | null; files: string[] };
 };
 

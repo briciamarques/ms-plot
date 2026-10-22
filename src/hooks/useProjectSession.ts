@@ -14,7 +14,9 @@ export function projectReducer(state: History, action: Action): History {
   return { current: {...state.current, ...action.patch}, past: coalesce ? state.past : [...state.past, state.current].slice(-30), future: [], key: action.key, time: action.time };
 }
 
-export function useProjectSession(initial: ProjectSnapshot) {
+export function useProjectSession(initial: ProjectSnapshot, prepareProject: (project: ProjectSnapshot) => ProjectSnapshot = project => project) {
+  const prepareRef = useRef(prepareProject);
+  prepareRef.current = prepareProject;
   const [history, dispatch] = useReducer(projectReducer, {current: initial, past: [], future: [], key: "", time: 0});
   const [ready, setReady] = useState(false);
   const [recoveryEnabled, setRecoveryEnabled] = useState(true);
@@ -28,7 +30,7 @@ export function useProjectSession(initial: ProjectSnapshot) {
     let active = true;
     void readRecovery().then(recovered => {
       if (!active) return;
-      if (recovered) { dispatch({type: "hydrate", project: recovered.project}); if (recovered.downloaded) setSaved(recovered.project); setBackupStatus("Previous session recovered locally"); }
+      if (recovered) { const project = prepareRef.current(recovered.project); dispatch({type: "hydrate", project}); if (recovered.downloaded && project === recovered.project) setSaved(project); setBackupStatus("Previous session recovered locally"); }
       else setBackupStatus("Local recovery ready");
     }).catch(() => { if (active) {setRecoveryEnabled(false); setBackupStatus("Local recovery unavailable. Download your project regularly.");} })
       .finally(() => { if (active) setReady(true); });
@@ -53,7 +55,7 @@ export function useProjectSession(initial: ProjectSnapshot) {
   }, [dirty]);
   const patch = useCallback((patch: Partial<ProjectSnapshot>, key = "") => dispatch({type: "patch", patch, key, time: Date.now()}), []);
   return { project: history.current, currentRef, ready, dirty, backupStatus, patch,
-    restore: (project: ProjectSnapshot) => dispatch({type: "restore", project}),
+    restore: (project: ProjectSnapshot) => dispatch({type: "restore", project: prepareRef.current(project)}),
     undo: () => dispatch({type: "undo"}), redo: () => dispatch({type: "redo"}),
     canUndo: history.past.length > 0, canRedo: history.future.length > 0,
     markSaved: () => setSaved(history.current),

@@ -36,6 +36,7 @@ export function aggregateReplicates(rows: ProcessedRow[], axis: XAxisKey, mode: 
       relativeIntensity: mean(group.map(r => r.relativeIntensity)),
       selectedIonPercent: mean(group.map(r => r.selectedIonPercent)),
       statistics: { n: group.length, sd, sem: sd === null ? null : sd / Math.sqrt(group.length), files: group.map(r => r.filename) },
+      ...(group.some(row => row.thermoScanSelections) ? {thermoScanSelections: group.flatMap(row => row.thermoScanSelections ?? [])} : {}),
       warning: [...new Set(group.map(r => r.warning).filter(Boolean))].join("; "),
     });
   }

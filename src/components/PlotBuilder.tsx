@@ -21,13 +21,14 @@ import { colorPalettes, paletteColor, readColorPalette, type ColorPaletteId } fr
 import type { SpectrumFile } from "../types";
 import { safeProjectFilename } from "../utils/project";
 import { PlotToolbar } from "./PlotToolbar";
-import { MethodSummary } from "./MethodSummary";
+import { SavedPowerControls } from "./SavedPowerControls";
+import { ThermoPlotScanControls } from "./ThermoPlotScanControls";
 import { FitResults } from "./FitResults";
 import { readLegendMzDecimals } from "../utils/format";
 
-import { readPlotSetting, type PlotBuilderProps, type PlotTab, type PlotInteraction, type InteractivePlotElement, type StyleTab, type PlotFont, type LineShape, type CurveMode, type TickFormat, type XValueScale, type JournalPresetKey, type FigureContent, type RasterDpi, type PlotStyleSettings, type SavedPlotStyle, MM_PER_INCH, STYLE_PRESETS_STORAGE_KEY, styleTabs, loadSavedPlotStyles, journalPresets, figureContentOptions, rasterDpiOptions, pointsToPixels, pixelsToPoints, pixelsFromMm, mmFromPixels, formatDecimal, axisLabel, defaultXAxisUnit, axisTitleWithUnit, tickFormatValue, normalizeHexColor, type ColorControlProps, ColorControl } from "./plot/controls";
+import { readPlotSetting, type PlotBuilderProps, type PlotTab, type PlotInteraction, type InteractivePlotElement, type PlotFont, type LineShape, type CurveMode, type TickFormat, type XValueScale, type JournalPresetKey, type FigureContent, type RasterDpi, type PlotStyleSettings, type SavedPlotStyle, MM_PER_INCH, STYLE_PRESETS_STORAGE_KEY, loadSavedPlotStyles, journalPresets, figureContentOptions, rasterDpiOptions, pointsToPixels, pixelsToPoints, pixelsFromMm, mmFromPixels, formatDecimal, axisLabel, defaultXAxisUnit, axisTitleWithUnit, tickFormatValue, normalizeHexColor, type ColorControlProps, ColorControl } from "./plot/controls";
 
-export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExpandedChange, initialSettings = {}, settingsRef, onSettingsChange, projectName, files, tolerance }: PlotBuilderProps) {
+export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExpandedChange, initialSettings = {}, settingsRef, onSettingsChange, projectName, files, tolerance, processingBusy = false, onScanSelectionChange, powerCalibration, onPowerCalibrationChange }: PlotBuilderProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [previewZoom, setPreviewZoom] = useState("fit");
   const [exporting, setExporting] = useState(false);
@@ -39,7 +40,6 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
   const [renderAttempt, setRenderAttempt] = useState(0);
   const previewAreaRef = useRef<HTMLDivElement | null>(null);
   const [activeTab, setActiveTab] = useState<PlotTab>("data");
-  const [activeStyleTab, setActiveStyleTab] = useState<StyleTab>("curve");
   const [xAxis, setXAxis] = useState<XAxisKey>(() => readPlotSetting(initialSettings, "xAxis", "acqTime"));
   const axisRows = useMemo(() => rowsForPlotAxis(sourceRows, xAxis), [sourceRows, xAxis]);
   const [yMode, setYMode] = useState<YMode>(() => readPlotSetting(initialSettings, "yMode", "absolute"));
@@ -930,7 +930,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
 
   return (
     <section className="workspace-section plot-workspace-section">
-      <PlotToolbar disabled={!rows.length} exporting={exporting} collapsed={collapsed} onCollapse={() => setCollapsed(value => !value)} expanded={expanded} onExpand={() => onExpandedChange(!expanded)} previewZoom={previewZoom} onPreviewZoom={setPreviewZoom} onImage={format => void exportImage(format)} onData={exportPlotCsv} />
+      <PlotToolbar disabled={!rows.length || processingBusy} exporting={exporting} collapsed={collapsed} onCollapse={() => setCollapsed(value => !value)} expanded={expanded} onExpand={() => onExpandedChange(!expanded)} previewZoom={previewZoom} onPreviewZoom={setPreviewZoom} onImage={format => void exportImage(format)} onData={exportPlotCsv} />
       {exportError && <p className="validation-notice" role="alert">{exportError}</p>}
       <div className={`plot-workbench ${collapsed ? "settings-collapsed" : ""}`}>
         <aside id="plot-settings" className="plot-settings-panel" aria-label="Plot settings" hidden={collapsed}>
@@ -951,19 +951,20 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
             </button>
           </div>
 
-          <MethodSummary files={files} tolerance={tolerance} yMode={yMode} curveMode={curveMode} window={movingAverageWindow} replicateMode={replicateMode} rows={rows.length} />
-          <FitResults traces={plotData} filename={safeProjectFilename(projectName).replace(".pdmsplot.json", "")} />
+          {onScanSelectionChange && <ThermoPlotScanControls files={files} tolerance={tolerance} active={isActive} onChange={onScanSelectionChange} />}
+          <FitResults traces={processingBusy ? [] : plotData} filename={safeProjectFilename(projectName).replace(".pdmsplot.json", "")} />
           {activeTab === "data" ? (
             <div className="plot-menu">
-            <div className="plot-control-group">
-              <h3>Text and axes</h3>
+            <details className="plot-control-group plot-accordion">
+              <summary>Text and axes</summary>
+            <div className="plot-accordion-content">
               <label><span>Replicates</span><select aria-label="Replicates" value={replicateMode} onChange={event => setReplicateMode(event.target.value as ReplicateMode)}>
                 <option value="individual">Individual files</option><option value="sd">Mean ± sample SD</option><option value="sem">Mean ± SEM</option>
               </select></label>
               {replicateMode !== "individual" && <p>Equal weight per file. Normalization is applied per file before averaging. Groups match the other metadata and spectrum type; edit Experiment group to separate batches. Missing or repeated replicate IDs are not pooled.</p>}
               {aggregation.warnings.length > 0 && <details open><summary>Replicate warnings ({aggregation.warnings.length})</summary>{aggregation.warnings.map(warning => <p key={warning}>{warning}</p>)}</details>}
               {(xAxis === "current" || xAxis === "voltage") && omittedAxisFiles > 0 && <p role="status">{omittedAxisFiles} files without a numeric {xAxis} are omitted. LED OFF stays in Data; assign a reference coordinate explicitly if you want to plot it.</p>}
-              {xAxis === "opticalPower" && <p role="status">Optical power comes from Power calibration. {omittedAxisFiles > 0 ? `${omittedAxisFiles} files without matching calibration are omitted; review current and wavelength there.` : "Values use the active calibration and background choice."} Vertical error bars describe ion intensity, not power uncertainty.</p>}
+              {xAxis === "opticalPower" && <p role="status">Optical power uses the saved measurements. {omittedAxisFiles > 0 ? `${omittedAxisFiles} files without matching calibration are omitted; check their current and wavelength.` : "Values use the active calibration and background choice."} Vertical error bars describe ion intensity, not power uncertainty.</p>}
               {xAxis === "opticalPower" && <details><summary>Power calibration used</summary>{[...new Set(axisRows.map(row => row.metadata.powerCalibration).filter(Boolean))].map(method => <p key={method}>{method}</p>)}</details>}
               {omittedWavelengthFiles > 0 && <p role="status">Segments without a positive numeric wavelength: {omittedWavelengthFiles}. Omitted from this plot and its normalization; available in Data and segment spectrum export.</p>}
               <div className="plot-controls">
@@ -1099,9 +1100,11 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
                 </label>
               </div>
             </div>
+            </details>
 
-            <div className="plot-control-group">
-              <h3>Ticks and range</h3>
+            <details className="plot-control-group plot-accordion">
+              <summary>Ticks and range</summary>
+            <div className="plot-accordion-content">
               <p>Blank limits fit the curves with a small margin. Entered limits are exact, including zero.</p>
               {(xAxisRange.error || yAxisRange.error) && <p role="alert">{xAxisRange.error ? `x axis: ${xAxisRange.error} ` : ""}{yAxisRange.error ? `y axis: ${yAxisRange.error}` : ""}</p>}
               <div className="axis-range-controls">
@@ -1192,9 +1195,11 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
                 </div>
               </div>
             </div>
+            </details>
 
-            <div className="plot-control-group">
-              <h3>Zoom</h3>
+            <details className="plot-control-group plot-accordion">
+              <summary>Zoom</summary>
+            <div className="plot-accordion-content">
               <div className="style-switches">
                 <label className="checkbox-label">
                   <input
@@ -1206,33 +1211,18 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
                 </label>
               </div>
             </div>
+            </details>
+            {powerCalibration && onPowerCalibrationChange && <SavedPowerControls calibration={powerCalibration} onChange={onPowerCalibrationChange} />}
             </div>
           ) : (
             <div className="style-panel">
-          <div className="style-subtabs" role="tablist" aria-label="Style settings">
-            {styleTabs.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                role="tab"
-                aria-selected={activeStyleTab === tab.key}
-                className={
-                  activeStyleTab === tab.key
-                    ? "style-subtab-button active"
-                    : "style-subtab-button"
-                }
-                onClick={() => setActiveStyleTab(tab.key)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
 
-          <div
-            className="plot-control-group"
-            hidden={activeStyleTab !== "presets"}
+
+          <details
+            className="plot-control-group plot-accordion"
           >
-            <h3>TRMS default</h3>
+            <summary>Figure style presets</summary>
+            <div className="plot-accordion-content">
             <p>Time in minutes · share of selected ions (%) · 3-point moving average + measured points · one-column inside legend · Arial.</p>
             <button type="button" className="secondary-button" onClick={applyTrmsDefaults}>Apply TRMS default</button>
             <p className="fit-guidance">Uses acquisition time stored in seconds. Keeps your selected ions and applies the reference colors.</p>
@@ -1367,12 +1357,13 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
               ) : null}
             </div>
           </div>
+            </details>
 
-          <div
-            className="plot-control-group"
-            hidden={activeStyleTab !== "legend"}
+          <details
+            className="plot-control-group plot-accordion"
           >
-            <h3>Legend</h3>
+            <summary>Legend</summary>
+            <div className="plot-accordion-content">
             <div className="legend-controls">
               <label className="checkbox-label">
                 <input
@@ -1482,12 +1473,13 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
               </div>
             ) : null}
           </div>
+            </details>
 
-          <div
-            className="plot-control-group"
-            hidden={activeStyleTab !== "curve"}
+          <details
+            className="plot-control-group plot-accordion"
           >
-            <h3>Curve</h3>
+            <summary>Curve</summary>
+            <div className="plot-accordion-content">
             <div className="style-grid">
               <label>
                 <span>Curve display</span>
@@ -1578,12 +1570,13 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
               </p>
             ) : null}
           </div>
+            </details>
 
-          <div
-            className="plot-control-group"
-            hidden={activeStyleTab !== "publication"}
+          <details
+            className="plot-control-group plot-accordion"
           >
-            <h3>Publication size and export</h3>
+            <summary>Publication size and export</summary>
+            <div className="plot-accordion-content">
             <div className="style-grid publication-grid">
               <label>
                 <span>Raster resolution</span>
@@ -1660,12 +1653,13 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
               ) : null}
             </div>
           </div>
+            </details>
 
-          <div
-            className="plot-control-group"
-            hidden={activeStyleTab !== "presets"}
+          <details
+            className="plot-control-group plot-accordion"
           >
-            <h3>Quick styles</h3>
+            <summary>Quick styles</summary>
+            <div className="plot-accordion-content">
             <div className="style-actions">
               <button
                 type="button"
@@ -1691,12 +1685,13 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
               </button>
             </div>
           </div>
+            </details>
 
-          <div
-            className="plot-control-group"
-            hidden={activeStyleTab !== "appearance"}
+          <details
+            className="plot-control-group plot-accordion"
           >
-            <h3>Visual details</h3>
+            <summary>Visual details</summary>
+            <div className="plot-accordion-content">
             <div className="style-grid">
               <label>
                 <span>Font</span>
@@ -1791,12 +1786,13 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
               </label>
             </div>
           </div>
+            </details>
 
-          <div
-            className="plot-control-group"
-            hidden={activeStyleTab !== "colors"}
+          <details
+            className="plot-control-group plot-accordion"
           >
-            <h3>Color presets</h3>
+            <summary>Color presets</summary>
+            <div className="plot-accordion-content">
             <label className="saved-style-name">
               <span>Color preset</span>
               <select value={colorPalette} onChange={event => applyColorPalette(readColorPalette(event.target.value))}>
@@ -1835,12 +1831,13 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
               />
             </div>
           </div>
+            </details>
 
-          <div
-            className="plot-control-group"
-            hidden={activeStyleTab !== "colors"}
+          <details
+            className="plot-control-group plot-accordion"
           >
-            <h3>Curve colors</h3>
+            <summary>Curve colors</summary>
+            <div className="plot-accordion-content">
             <div className="trace-color-panel">
               {ionOptions.length === 0 ? (
                 <span className="style-empty">No m/z curves yet</span>
@@ -1862,11 +1859,13 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
               )}
             </div>
           </div>
+            </details>
             </div>
           )}
         </aside>
 
-        <div className="plot-preview-pane">
+        <div className="plot-preview-pane" aria-busy={processingBusy}>
+          {processingBusy && <p className="scan-live-progress" role="status">Atualizando gráfico… A última versão permanece visível durante o cálculo.</p>}
           {plotError && <div className="bruker-warning" role="alert">
             <p>The plot could not be updated. Your data and ion list are still available; you can switch tabs or save the project.</p>
             <button type="button" className="secondary-button" onClick={() => setRenderAttempt(value => value + 1)}>Retry plot</button>

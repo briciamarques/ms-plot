@@ -1,8 +1,9 @@
 import {useEffect, useState} from "react";
-import type {LegendPosition, ProcessedRow, XAxisKey, SpectrumFile} from "../../types";
+import type {LegendPosition, ProcessedRow, XAxisKey, SpectrumFile, ScanRange} from "../../types";
 import {xAxisOptions} from "../../types";
 import type {ColorPaletteId} from "../../utils/colorPalettes";
 import type {LegendMzDecimals} from "../../utils/format";
+import type {PowerCalibration} from "../../utils/powerCalibration";
 
 export function readPlotSetting<T>(settings: Record<string, unknown>, key: string, fallback: T): T {
   const value = settings[key];
@@ -23,6 +24,10 @@ export type PlotBuilderProps = {
   projectName: string;
   files: SpectrumFile[];
   tolerance: number;
+  processingBusy?: boolean;
+  powerCalibration?: PowerCalibration;
+  onPowerCalibrationChange?: (calibration: PowerCalibration) => void;
+  onScanSelectionChange?: (id: string, ranges: ScanRange[] | undefined, reason: string) => void;
 };
 
 export type PlotTab = "data" | "style";

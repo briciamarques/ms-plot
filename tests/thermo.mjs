@@ -4,7 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 const output = path.resolve('node_modules/.tmp/thermo-tests');
-for (const name of ['types','utils/id','utils/filenameMetadata','utils/bruker','utils/powerCalibration','utils/project','utils/processing','utils/csv','utils/plot','utils/format','utils/colorPalettes','utils/replicates','utils/preview']) {
+for (const name of ['types','utils/id','utils/filenameMetadata','utils/bruker','utils/powerCalibration','utils/project','utils/thermoScans','utils/processing','utils/csv','utils/plot','utils/format','utils/colorPalettes','utils/replicates','utils/preview']) {
   const code = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.ES2020}}).outputText.replace(/from "(\.[^"]+)"/g,'from "$1.mjs"');
   const target=path.join(output,`${name}.mjs`); fs.mkdirSync(path.dirname(target),{recursive:true}); fs.writeFileSync(target,code);
 }
@@ -63,3 +63,65 @@ const project=createProjectSnapshot('synthetic',files,[],.5,files.map(f=>f.id));
 assert.deepEqual(parseProjectSnapshot(JSON.stringify(project)),project);
 fs.writeFileSync(path.join(output,'synthetic.pdmsplot.json'),JSON.stringify({...project,ions:[{id:'ion',targetMz:'100',label:'Synthetic'}],plotSettings:{...project.plotSettings,xTitle:'Current',xUnit:'mA',exportWidth:1600,exportHeight:900}}));
 console.log('PASS: Thermo filename fields and units, mean of scan maxima, zeros, SD/SEM, normalization, reference exclusion, group separation, duplicate IDs, n=1, error bars, export and project persistence.');
+
+// Range selection must change extraction without mutating source scans, and must
+// invalidate cached extraction even when the original scan array is reused.
+const {parseScanRanges, formatScanRanges, selectedThermoScans} = await load('utils/thermoScans');
+const {processedRowsToCsv} = await load('utils/csv');
+assert.equal(parseScanRanges(' ', 5), undefined);
+assert.deepEqual(parseScanRanges('5, 2-3, 1-2', 5), [{start:1,end:3},{start:5,end:5}]);
+assert.equal(formatScanRanges(parseScanRanges('1-2, 4', 5)), '1-2, 4');
+for (const invalid of ['0', '-1', '3-2', '1-6', '1.5', '1,', 'abc', '9007199254740992']) {
+  assert.throws(() => parseScanRanges(invalid, 5));
+}
+const source = make(8);
+const originalScans = JSON.stringify(source.thermo.scans);
+const selection = {...source, thermo:{...source.thermo, scanRanges:[{start:1,end:1}], scanSelectionReason:'Stable acquisition window'}};
+assert.equal(processSpectra([source],ion,.5)[0].absoluteIntensity, 8);
+const selectedRow = processSpectra([selection],ion,.5)[0];
+assert.equal(selectedRow.absoluteIntensity,16);
+assert.equal(selectedRow.warning,'');
+assert.deepEqual(selectedRow.thermoScanSelections[0], {filename:source.filename,channel:source.thermo.channel,ranges:'1',selected:1,total:2,reason:'Stable acquisition window'});
+assert.equal(processSpectra([source],ion,.5)[0].absoluteIntensity,8);
+const zeroOnly = {...source, thermo:{...source.thermo, scanRanges:[{start:2,end:2}]}};
+assert.equal(processSpectra([zeroOnly],ion,.5)[0].absoluteIntensity,0);
+assert.match(processSpectra([zeroOnly],ion,.5)[0].warning,/1\/1 scans/);
+assert.equal(JSON.stringify(source.thermo.scans),originalScans);
+assert.deepEqual(selectedThermoScans(['a','b','c','d'],parseScanRanges('1, 3-4',4)),['a','c','d']);
+const selectionProject = createProjectSnapshot('selection', [selection], [], .5, [selection.id]);
+const restoredSelection = parseProjectSnapshot(JSON.stringify(selectionProject));
+assert.deepEqual(restoredSelection.files[0].thermo, selection.thermo);
+for (const scanRanges of [[],[{start:0,end:1}],[{start:1,end:3}],[{start:2,end:1}],[{start:1.5,end:2}],[{start:1,end:2},{start:2,end:2}],null,'1-2']) {
+  assert.throws(() => parseProjectSnapshot(JSON.stringify({...selectionProject,files:[{...selection,thermo:{...selection.thermo,scanRanges}}]})), /invalid scan ranges/);
+}
+const secondSelection = {...make(9),thermo:{...make(9).thermo,scanRanges:[{start:2,end:2}]}};
+const selectedReplicates = aggregateReplicates(processSpectra([selection,secondSelection],ion,.5),'current','absolute').rows[0];
+assert.equal(selectedReplicates.absoluteIntensity,8);
+assert.equal(selectedReplicates.statistics.n,2); // files, never scan count
+assert.ok(Math.abs(selectedReplicates.statistics.sd-Math.sqrt(128)) < 1e-12);
+assert.equal(selectedReplicates.thermoScanSelections.length,2);
+for (const exported of [processedRowsToCsv([selectedRow]),plotRowsToCsv([selectedReplicates],'current','absolute')]) {
+  assert.match(exported,/Thermo scan selection/);
+  assert.match(exported,/Stable acquisition window/);
+}
+assert.match(plotRowsToCsv([selectedReplicates],'current','absolute'),/synthetic_9.raw/);
+console.log('PASS: inclusive/disjoint scan ranges, invalid ranges, cache invalidation, zero scans, original scan preservation, legacy/all-scan fallback, project round trip, per-file export provenance and replicate statistics.');
+
+// Live interval edits reuse the per-scan maxima; changing tolerance re-extracts.
+const {extractThermoIntensity} = await load('utils/processing');
+let peakReads = 0;
+const tracked = {...make(1),thermo:{...make(1).thermo,scans:Array.from({length:100},(_,i)=>({timeSeconds:i,get peaks(){peakReads++; return [{mz:100,intensity:i+1}];}}))}};
+assert.equal(extractThermoIntensity(tracked,100,.5).intensity,50.5);
+assert.equal(peakReads,100);
+const initialReads=peakReads;
+for(let i=1;i<50;i++) {
+  const selected={...tracked,thermo:{...tracked.thermo,scanRanges:[{start:i,end:i+2}]}};
+  assert.equal(extractThermoIntensity(selected,100,.5).intensity,i+1);
+}
+assert.equal(peakReads,initialReads,'Range changes must not rescan peaks');
+assert.equal(extractThermoIntensity(tracked,100,.1).intensity,50.5);
+assert.equal(peakReads,200,'Tolerance changes must invalidate the scan cache');
+const highDynamic={...make(1),thermo:{...make(1).thermo,scans:[{timeSeconds:0,peaks:[{mz:100,intensity:1e20}]},{timeSeconds:1,peaks:[{mz:100,intensity:1}]}]}};
+extractThermoIntensity(highDynamic,100,.5);
+assert.equal(extractThermoIntensity({...highDynamic,thermo:{...highDynamic.thermo,scanRanges:[{start:2,end:2}]}},100,.5).intensity,1);
+console.log('PASS: live range edits reuse per-scan extraction, tolerance invalidates cache, and small signals retain precision after excluded large peaks.');

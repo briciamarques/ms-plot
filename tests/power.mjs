@@ -5,7 +5,7 @@ import {pathToFileURL} from 'node:url';
 import ts from 'typescript';
 import {zipSync, strToU8} from 'fflate';
 const output = path.resolve('node_modules/.tmp/power-tests');
-for (const name of ['types','utils/id','utils/project','utils/powerCalibration','utils/plot','utils/processing','utils/bruker','utils/colorPalettes','utils/format','utils/filenameMetadata','utils/csv','utils/replicates']) {
+for (const name of ['data/powerMeasurements','utils/savedPowerCalibration','types','utils/id','utils/project','utils/powerCalibration','utils/plot','utils/thermoScans','utils/processing','utils/bruker','utils/colorPalettes','utils/format','utils/filenameMetadata','utils/csv','utils/replicates']) {
   const code = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {compilerOptions: {target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ES2020}}).outputText.replace(/from "(\.[^"]+)"/g, 'from "$1.mjs"');
   const target = path.join(output, `${name}.mjs`); fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target, code);
 }
@@ -117,10 +117,44 @@ assert.throws(()=>validatePowerCalibration({...combined,measurements:[{...record
 assert.ok(calibratedFiles([{...file,metadata:{...file.metadata,wavelength:'365',current:'1000'}}],{...combined,enabled:true})[0].metadata.powerCalibration.includes('initial'));
 console.log('PASS: 365 nm finalbackground, separate baselines, legacy baseline, current-sweep default, wavelength imports and persistence.');
 
-// Optional local source audit. No experimental files are copied into the repository.
+// Optional audit of a supplied original ZIP.
 if (process.argv[2]) {
   const bytes = fs.readFileSync(process.argv[2]);
   const actual = await readPowerUploads([new File([bytes],'measurements.zip')]);
   const calibration = defaultPowerCalibration(actual);
   console.log(JSON.stringify({files:actual.length,summary:summarizePower(calibration)},null,2));
 }
+
+// Saved site measurements are reproducible, travel with projects and match both LEDs.
+const {savedPowerCalibration, powerSources} = await load('data/powerMeasurements');
+const {withSavedPowerCalibration} = await load('utils/savedPowerCalibration');
+validatePowerCalibration(savedPowerCalibration);
+assert.equal(powerSources.length, 2);
+assert.equal(savedPowerCalibration.measurements.length, 216);
+assert.equal(savedPowerCalibration.measurements.filter(m => m.wavelengthNm === 280).length, 70);
+assert.equal(savedPowerCalibration.measurements.filter(m => m.wavelengthNm === 365).length, 146);
+const emptyWithPower = withSavedPowerCalibration(createEmptyProject());
+assert.equal(emptyWithPower.powerCalibration, savedPowerCalibration);
+const disabledProject = {...emptyWithPower, powerCalibration: {...config, enabled: false}};
+assert.equal(withSavedPowerCalibration(disabledProject), disabledProject);
+assert.equal(withSavedPowerCalibration({...emptyWithPower, powerCalibration: config}).powerCalibration, config);
+const reopened = parseProjectSnapshot(JSON.stringify(emptyWithPower));
+assert.deepEqual(reopened.powerCalibration, savedPowerCalibration);
+const savedFiles = [280,365,400].map(w => ({...file,id:`led-${w}`,metadata:{...file.metadata,wavelength:String(w),current:'100'}}));
+savedFiles.push({...file,id:'missing-wavelength',metadata:{...file.metadata,wavelength:''}});
+const applied = calibratedFiles(savedFiles, savedPowerCalibration);
+for(const [index,w] of [280,365].entries()) {
+  const records = savedPowerCalibration.measurements.filter(m => m.wavelengthNm === w && m.intervalSeconds === 1);
+  const avg = values => values.reduce((sum,v)=>sum+v,0)/values.length;
+  const currentMeans = records.filter(m => m.currentMa === 100).map(m => avg(m.powersW)*1000);
+  const backgroundMeans = records.filter(m => m.currentMa === null && (m.backgroundPhase ?? 'initial') === 'initial').map(m => avg(m.powersW)*1000);
+  near(Number(applied[index].metadata.opticalPower), avg(currentMeans)-avg(backgroundMeans));
+  assert.match(applied[index].metadata.powerCalibration,new RegExp(`${w} nm; sample interval 1 s; background .*initial`));
+  const profile = selectPowerWavelength(savedPowerCalibration,w);
+  assert.equal(summarizePower(profile).points.length,w === 280 ? 12 : 22);
+}
+assert.equal(applied[2].metadata.opticalPower,'');
+assert.equal(applied[3].metadata.opticalPower,'');
+assert.equal(calibratedFiles(savedFiles,{...savedPowerCalibration,enabled:false}),savedFiles);
+assert.throws(()=>validatePowerCalibration({...savedPowerCalibration,automaticWavelength:'yes'}));
+console.log('Saved calibration: both wavelengths, original means, project roundtrip and missing metadata passed.');

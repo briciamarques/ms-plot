@@ -20,6 +20,7 @@ export type PowerCalibration = {
   interpolate: boolean;
   assumeWavelength: boolean;
   enabled: boolean;
+  automaticWavelength?: boolean;
 };
 export type PowerPoint = { currentMa: number; rawMw: number; powerMw: number; sdMw: number | null; n: number; samples: number };
 const mean = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
@@ -173,10 +174,20 @@ export function matchPower(file: SpectrumFile, config: PowerCalibration, summary
 
 export function calibratedFiles(files: SpectrumFile[], config?: PowerCalibration): SpectrumFile[] {
   if (!config?.enabled) return files;
-  const summary = summarizePower(config);
+  const profiles = new Map<number, {config: PowerCalibration; summary: ReturnType<typeof summarizePower>}>();
+  profiles.set(config.wavelengthNm, {config, summary: summarizePower(config)});
+  if (config.automaticWavelength) {
+    for (const wavelength of new Set(config.measurements.filter(m => m.currentMa !== null).map(m => m.wavelengthNm))) {
+      if (profiles.has(wavelength)) continue;
+      const profile = {...selectPowerWavelength(config, wavelength), enabled: true};
+      profiles.set(wavelength, {config: profile, summary: summarizePower(profile)});
+    }
+  }
   return files.map(file => {
-    const match = matchPower(file, config, summary);
-    const provenance = `${config.wavelengthNm} nm; sample interval ${config.intervalSeconds} s; ${config.subtractBackground ? `background ${summary.backgroundMw} mW (${config.backgroundIntervalSeconds} s, ${config.backgroundSource ?? "initial"})` : "raw power"}; ${"method" in match ? match.method : match.reason}${!file.metadata.wavelength.trim() && config.assumeWavelength ? "; wavelength assumed by user" : ""}`;
+    const wavelength = metadataNumber(file.metadata.wavelength, "nm");
+    const {config: profile, summary} = profiles.get(config.automaticWavelength && wavelength !== null ? wavelength : config.wavelengthNm) ?? profiles.get(config.wavelengthNm)!;
+    const match = matchPower(file, profile, summary);
+    const provenance = `${profile.wavelengthNm} nm; sample interval ${profile.intervalSeconds} s; ${profile.subtractBackground ? `background ${summary.backgroundMw} mW (${profile.backgroundIntervalSeconds} s, ${profile.backgroundSource ?? "initial"})` : "raw power"}; ${"method" in match ? match.method : match.reason}${!file.metadata.wavelength.trim() && profile.assumeWavelength ? "; wavelength assumed by user" : ""}`;
     return {...file, metadata: {...file.metadata, opticalPower: "powerMw" in match ? String(match.powerMw) : "", powerCalibration: provenance}};
   });
 }
@@ -184,6 +195,7 @@ export function calibratedFiles(files: SpectrumFile[], config?: PowerCalibration
 export function validatePowerCalibration(value: unknown): PowerCalibration {
   if (!value || typeof value !== "object") throw Error("Invalid power calibration");
   const c = value as PowerCalibration;
+  if (c.automaticWavelength !== undefined && typeof c.automaticWavelength !== "boolean") throw Error("Invalid automatic wavelength setting");
   if (c.backgroundSource !== undefined && !["initial", "final", "both"].includes(c.backgroundSource)) throw Error("Invalid background source");
   if (![c.wavelengthNm, c.intervalSeconds, c.backgroundIntervalSeconds].every(positive) ||
     !["subtractBackground", "interpolate", "assumeWavelength", "enabled"].every(key => typeof c[key as keyof PowerCalibration] === "boolean") ||

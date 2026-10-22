@@ -3,20 +3,21 @@
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-  background: #eef2f6;
-  color: #1f2937;
+  background: #eeeee3;
+  color: #253e33;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --surface: #ffffff;
-  --surface-muted: #f8fafc;
-  --line: #d8e0ea;
-  --line-strong: #aebccd;
-  --text: #1f2937;
-  --muted: #64748b;
-  --teal: #0f766e;
-  --teal-dark: #115e59;
-  --blue: #2563eb;
+  --surface: #fffdf6;
+  --surface-muted: #f5f6ee;
+  --line: #d5dacb;
+  --line-strong: #a7b59e;
+  --text: #253e33;
+  --muted: #64705b;
+  --teal: #244f40;
+  --teal-dark: #1c4033;
+  --blue: #71313f;
+  --burgundy: #71313f;
   --amber: #b45309;
   --rose: #be123c;
   --shadow: 0 14px 38px rgba(30, 41, 59, 0.08);
@@ -1058,11 +1059,11 @@ label:has(input:disabled) {
 /* The viewport is the workspace. Only the active panel and settings scroll. */
 html, body, #root { height: 100%; min-height: 0; overflow: hidden; }
 .app-shell, .app-shell.plot-view-active {
-  display: grid; grid-template-rows: auto auto minmax(0, 1fr);
+  display: grid; grid-template-rows: auto minmax(0, 1fr);
   height: 100dvh; min-height: 0; overflow: hidden;
 }
 .app-main, .plot-view-active .app-main {
-  grid-template-rows: auto minmax(0, 1fr); min-height: 0; height: 100%; overflow: hidden;
+  grid-template-rows: minmax(0, 1fr); min-height: 0; height: 100%; overflow: hidden;
 }
 .project-panel { padding: 9px 14px; max-height: 35dvh; overflow: auto; }
 .project-panel summary { cursor: pointer; font-weight: 700; font-size: .85rem; }
@@ -1236,3 +1237,147 @@ input[aria-invalid="true"] { border-color: #be123c; background: #fff7f8; }
 .power-calibration-preview { display: block; width: min(100%, 780px); margin: 16px auto; background: #fff; color: #222; font: 12px Arial, sans-serif; }
 .power-calibration .control-button-row { margin: 16px 0; }
 .power-calibration details { margin: 16px 0; }
+
+/* A single compact menu bar keeps the viewport available for analysis. */
+.app-header.compact-header {
+  position: relative;
+  z-index: 20;
+  justify-content: flex-start;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 50px;
+  padding: 7px 14px;
+  border-bottom-width: 2px;
+}
+.compact-header h1 { flex: 0 0 auto; font-size: 1rem; white-space: nowrap; }
+.compact-header h1 span { margin-left: 4px; color: #a9becd; font-weight: 500; font-size: .8rem; }
+.workspace-navigation { position: relative; min-width: 0; }
+.workspace-nav-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #405160;
+  border-radius: 6px;
+  background: #233342;
+  color: #edf5f8;
+  font-size: .8rem;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.workspace-nav-toggle:hover, .workspace-nav-toggle[aria-expanded="true"] { background: #304957; border-color: #63b8b0; }
+.workspace-nav-toggle > span { overflow: hidden; text-overflow: ellipsis; }
+.workspace-nav-toggle svg { flex-shrink: 0; }
+.workspace-nav-menu, .compact-header .project-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--text);
+  box-shadow: 0 12px 32px #13202d33;
+  max-height: calc(100dvh - 68px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.workspace-nav-menu { width: 248px; max-width: calc(100vw - 28px); padding: 6px; }
+.workspace-nav-tabs { display: grid; gap: 3px; }
+.workspace-nav-tab { padding: 10px 12px; border-radius: 5px; background: white; color: var(--text); text-align: left; cursor: pointer; font-size: .85rem; }
+.workspace-nav-tab:hover { background: #f1f5f9; }
+.workspace-nav-tab.active { background: #e7f3f2; color: var(--teal-dark); font-weight: 750; }
+.workspace-nav-counts { margin: 6px 0 0; padding: 10px 12px 6px; border-top: 1px solid var(--line); color: var(--muted); font-size: .75rem; }
+.project-menu { min-width: 0; }
+.project-menu-name { max-width: 240px; color: #bdd2dd; font-weight: 400; }
+.project-dirty-indicator { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: #fbbf24; }
+.compact-header .project-panel { top: calc(100% + 4px); left: 14px; width: min(520px, calc(100vw - 28px)); padding: 16px; }
+.compact-header .project-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.compact-header .project-actions > label:first-child { grid-column: 1 / -1; width: 100%; }
+.compact-header .project-actions > label:first-child > span { display: block; }
+.compact-header .project-actions .secondary-button { width: auto; font-size: .8rem; }
+.compact-header .project-status { margin-top: 12px; line-height: 1.5; }
+.import-project-button:focus-within { outline: 3px solid #2563eb; outline-offset: 2px; }
+.compact-header + .app-main { padding-top: 8px; }
+@media (max-width: 700px) {
+  .app-header.compact-header { padding: 6px 8px; gap: 6px; }
+  .compact-header h1 span, .project-menu-name { display: none; }
+  .workspace-nav-toggle { padding: 6px 8px; gap: 5px; font-size: .75rem; }
+  .workspace-navigation { position: static; flex: 0 1 auto; }
+  .workspace-nav-menu { left: 8px; top: calc(100% + 4px); }
+  .compact-header .project-panel { left: 8px; width: calc(100vw - 16px); padding: 12px; }
+  .compact-header .project-actions .secondary-button { min-height: 38px; }
+  .compact-header h1 { font-size: .9rem; }
+}
+
+.thermo-reader-help > .reader-actions { margin-block: 8px; }
+.thermo-reader-help > details { padding-bottom: 0; }
+.thermo-extraction-help { margin-block: 14px; line-height: 1.5; }
+.thermo-extraction-help summary, .thermo-scan-selection summary { cursor: pointer; font-weight: 650; }
+.thermo-scan-file { margin-block: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.thermo-scan-file h4 { margin: 0 0 8px; overflow-wrap: anywhere; }
+.thermo-scan-selection { font-size: .86rem; line-height: 1.5; }
+.thermo-scan-selection > p { max-width: 900px; }
+.scan-range-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.scan-range-fields label, .scan-preview-ion { display: grid; gap: 4px; font-weight: 600; }
+.scan-range-fields input, .scan-preview-ion input { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 6px; }
+.scan-preview-ion { max-width: 220px; margin-top: 12px; }
+.thermo-scan-selection > details { margin-top: 12px; }
+.thermo-scan-selection .control-button-row { margin-block: 10px; align-items: center; }
+.scan-preview-table { max-height: 320px; overflow: auto; }
+@media (max-width: 700px) { .scan-range-fields { grid-template-columns: minmax(0, 1fr); } }
+
+.thermo-live-controls { margin-block: 10px; padding: 10px; border: 1px solid #b7d8d4; border-radius: 7px; background: #f4f9f7; font-size: .8rem; line-height: 1.45; }
+.thermo-live-controls > summary { cursor: pointer; font-weight: 750; color: var(--teal-dark); }
+.scan-live-file { display: grid; gap: 5px; margin-block: 12px; font-weight: 650; }
+.scan-live-file select { width: 100%; min-width: 0; padding: 7px; border: 1px solid var(--line-strong); border-radius: 5px; background: white; }
+.scan-live-toggle { display: flex; align-items: center; gap: 6px; font-weight: 650; }
+.thermo-live-controls .scan-range-fields { grid-template-columns: minmax(0, 1fr); }
+.thermo-live-controls .thermo-scan-selection { font-size: .78rem; }
+.thermo-live-controls .control-button-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.thermo-live-controls .control-button-row button { min-height: 32px; padding: 7px; font-size: .75rem; }
+.scan-live-progress { margin: 0 0 6px; padding: 7px 10px; background: #e7f3f2; color: var(--teal-dark); border-radius: 5px; font-size: .8rem; }
+
+/* Warm cream, forest green and burgundy interface; figure colors remain editable. */
+.app-header.compact-header { background: var(--teal); color: var(--surface); border-color: var(--burgundy); }
+.compact-header h1 { font-family: Georgia, "Times New Roman", serif; font-size: 1.2rem; }
+.compact-header h1 span, .project-menu-name { color: #dce3cc; }
+.workspace-nav-toggle { background: #315c4b; border-color: #78917b; color: #fffdf6; }
+.workspace-nav-toggle:hover, .workspace-nav-toggle[aria-expanded="true"] { background: var(--burgundy); border-color: #a57980; }
+.workspace-nav-menu, .compact-header .project-panel, .workspace-nav-tab { background: var(--surface); }
+.workspace-nav-tab:hover, .workspace-nav-tab.active { background: #e8eddd; }
+.workspace-nav-tab.active { color: var(--teal); }
+.workspace-section { background: var(--surface); }
+.workspace-section h2 { color: var(--teal); }
+.section-kicker { color: var(--teal); }
+.secondary-button { color: var(--teal-dark); background: #f4f5eb; border-color: var(--line-strong); }
+.secondary-button:hover { background: #e8eddd; }
+.primary-button, .primary-file-button { background: var(--teal); }
+.primary-button:hover, .primary-file-button:hover { background: var(--teal-dark); }
+.plot-export-actions .primary-button { background: var(--burgundy); }
+.plot-export-actions .primary-button:hover { background: #592633; }
+.plot-tabs, .style-subtabs { background: #eff1e6; }
+.tab-button.active, .style-subtab-button.active { background: #e2e9d6; color: var(--teal); box-shadow: inset 0 -2px var(--teal); }
+.plot-focus-active .plot-settings-panel .plot-tabs { background: var(--surface); }
+.thermo-reader-help, .thermo-live-controls, .scan-live-progress, .processing-status { background: #f3f5eb; border-color: var(--line); }
+.thermo-live-controls { margin-block: 0; }
+.help-text, .fit-guidance, .project-status { color: var(--muted); }
+.plot-settings-panel { gap: 10px; }
+.plot-menu, .style-panel { gap: 10px; }
+.plot-control-group.plot-accordion { display: block; border: 1px solid var(--line); border-radius: 8px; padding: 0; background: #f8f8f0; }
+.plot-control-group.plot-accordion[hidden] { display: none; }
+.plot-accordion > summary { padding: 11px 12px; color: var(--teal-dark); cursor: pointer; font-size: .84rem; font-weight: 750; }
+.plot-accordion > summary::marker { font-size: .75em; }
+.plot-accordion > summary:focus-visible { outline: 2px solid var(--burgundy); outline-offset: -3px; border-radius: 8px; }
+.plot-accordion[open] > summary { border-bottom: 1px solid var(--line); }
+.plot-accordion-content { display: grid; gap: 12px; padding: 12px; background: var(--surface); border-radius: 0 0 8px 8px; }
+.plot-accordion-content > p { margin: 0; font-size: .8rem; line-height: 1.5; }
+.plot-accordion-content > label { display: grid; gap: 6px; font-size: .82rem; }
+.plot-accordion-content > label.checkbox-label { display: flex; white-space: normal; }
+.plot-accordion-content select { min-width: 0; width: 100%; padding: 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: white; color: var(--text); }
+.plot-accordion-content details { font-size: .8rem; }
+.plot-accordion-content details > summary { cursor: pointer; }
+.plot-accordion-content .data-table { min-width: 0; }

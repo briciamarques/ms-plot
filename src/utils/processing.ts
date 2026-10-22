@@ -5,6 +5,7 @@ import type {
   SpectrumFile,
 } from "../types";
 import { roundMass } from "./bruker";
+import { formatScanRanges } from "./thermoScans";
 
 export type ExtractedIonIntensity = {
   foundMz: number | null;
@@ -16,7 +17,7 @@ export type ExtractedIonIntensity = {
 const extractionCache = new WeakMap<object, {configuration: string; values: Map<number, ExtractedIonIntensity>}>();
 function cachedExtraction(file: SpectrumFile, mass: number, tolerance: number): ExtractedIonIntensity {
   const source = file.thermo?.scans ?? file.peaks;
-  const configuration = JSON.stringify([tolerance, file.bruker?.method, file.bruker?.mzDecimals, !!file.thermo]);
+  const configuration = JSON.stringify([tolerance, file.bruker?.method, file.bruker?.mzDecimals, !!file.thermo, file.thermo?.scanRanges]);
   let cache = extractionCache.get(source);
   if (!cache || cache.configuration !== configuration) {
     cache = {configuration, values: new Map()}; extractionCache.set(source, cache);
@@ -125,6 +126,10 @@ export const processSpectra = (
         filename: file.filename,
         ...(file.bruker ? { seriesId: file.bruker.runId ?? file.bruker.source } : {}),
         ...(file.thermo ? { acquisitionKey: file.thermo.channel,
+          thermoScanSelections: [{filename: file.filename, channel: file.thermo.channel,
+            ranges: formatScanRanges(file.thermo.scanRanges) || "all",
+            selected: file.thermo.scanRanges?.reduce((sum, range) => sum + range.end - range.start + 1, 0) ?? file.thermo.scans.length,
+            total: file.thermo.scans.length, reason: file.thermo.scanSelectionReason ?? ""}],
           seriesId: JSON.stringify([file.thermo.channel, file.metadata.compound, file.metadata.concentration, file.metadata.condition, file.metadata.experiment, file.metadata.replicate]) } : {}),
         metadata: file.metadata,
         targetMz: ion.targetMz,
@@ -139,14 +144,40 @@ export const processSpectra = (
   return normalizeIntensities(rows);
 };
 
+// Keep per-scan extraction independent of range selection. Weak keys release
+// removed acquisitions; bounded entries avoid retaining every inspected m/z.
+const thermoScanCache = new WeakMap<object, {tolerance: number; values: Map<number, {intensity: Float64Array; mz: Float64Array}>}>();
 export function extractThermoIntensity(file: SpectrumFile, targetMz: number, tolerance: number): ExtractedIonIntensity {
-  const scans = file.thermo!.scans;
+  const {scans, scanRanges} = file.thermo!;
   if (!scans.length) return { foundMz: null, intensity: 0, warning: "No scans" };
-  const extracted = scans.map(scan => extractIonIntensity(scan.peaks, targetMz, tolerance));
-  const found = extracted.filter(value => value.foundMz !== null && value.intensity > 0);
+  let cache = thermoScanCache.get(scans);
+  if (!cache || cache.tolerance !== tolerance) {
+    cache = {tolerance, values: new Map()}; thermoScanCache.set(scans, cache);
+  }
+  let values = cache.values.get(targetMz);
+  if (!values) {
+    values = {intensity: new Float64Array(scans.length), mz: new Float64Array(scans.length)};
+    scans.forEach((scan, index) => {
+      const extracted = extractIonIntensity(scan.peaks, targetMz, tolerance);
+      values!.intensity[index] = extracted.intensity;
+      values!.mz[index] = extracted.foundMz ?? NaN;
+    });
+    if (cache.values.size >= 64) cache.values.delete(cache.values.keys().next().value!);
+    cache.values.set(targetMz, values);
+  }
+  let count = 0, found = 0, sum = 0, mzSum = 0;
+  // Sum selected values directly rather than subtracting prefix sums: small
+  // signals after a very large excluded peak must retain their precision.
+  for (const range of scanRanges ?? [{start: 1, end: scans.length}]) {
+    for (let index = range.start - 1; index < range.end; index++) {
+      count++; sum += values.intensity[index];
+      if (values.intensity[index] > 0 && Number.isFinite(values.mz[index])) { found++; mzSum += values.mz[index]; }
+    }
+  }
+  if (!count) return {foundMz: null, intensity: 0, warning: "No scans"};
   return {
-    foundMz: found.length ? found.reduce((sum, value) => sum + value.foundMz!, 0) / found.length : null,
-    intensity: extracted.reduce((sum, value) => sum + value.intensity, 0) / scans.length,
-    warning: found.length < scans.length ? `${scans.length - found.length}/${scans.length} scans without positive signal in the target window; included as zero` : "",
+    foundMz: found ? mzSum / found : null,
+    intensity: sum / count,
+    warning: found < count ? `${count - found}/${count} scans without positive signal in the target window; included as zero` : "",
   };
 }

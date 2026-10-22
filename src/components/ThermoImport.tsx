@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import type { Peak, SpectrumFile } from "../types";
+import type { Peak, ScanRange, SpectrumFile } from "../types";
 import { emptyMetadata } from "../types";
 import { inferMetadataFromFilename } from "../utils/filenameMetadata";
 import { createId } from "../utils/id";
 import { ThermoReaderHelp } from "./ThermoReaderHelp";
+import { ThermoScanSelection } from "./ThermoScanSelection";
 
 type Channel = { key: string; label: string; precursor: string; mode: string; instrument: string; scans: Array<{timeSeconds: number; peaks: Peak[]}> };
-type Imported = { filename: string; fingerprint: string; channels: Channel[]; selected: string };
+type Imported = { filename: string; fingerprint: string; channels: Channel[]; selected: string; scanRanges?: ScanRange[]; scanSelectionReason?: string; unappliedScanDraft?: boolean };
 
-export function ThermoImport({ files, onImport }: { files: SpectrumFile[]; onImport: (files: SpectrumFile[]) => void }) {
+export function ThermoImport({ files, tolerance, onImport, onScanSelectionChange }: {
+  files: SpectrumFile[]; tolerance: number; onImport: (files: SpectrumFile[]) => void;
+  onScanSelectionChange: (id: string, ranges: ScanRange[] | undefined, reason: string) => void;
+}) {
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [pending, setPending] = useState<Imported[]>([]);
@@ -63,13 +67,15 @@ export function ThermoImport({ files, onImport }: { files: SpectrumFile[]; onImp
     } finally { busy.current = false; controller.current = undefined; setProgress(''); }
   };
   const add = () => {
+    if (pending.some(item => !item.selected || item.unappliedScanDraft)) return;
     const imported = pending.map(item => {
       const channel = item.channels.find(channel => channel.key === item.selected)!;
       const metadata = { ...emptyMetadata(), ...inferMetadataFromFilename(item.filename), parentIon: channel.precursor || inferMetadataFromFilename(item.filename).parentIon || '' };
       const peaks = channel.scans.flatMap(scan => scan.peaks);
       return { id: createId('thermo'), filename: item.filename, metadata, peaks,
         validLineCount: peaks.length, invalidLineCount: 0, warnings: [],
-        thermo: { fingerprint: item.fingerprint, channel: channel.key, instrument: channel.instrument, mode: channel.mode, scans: channel.scans, method: 'mean-scan-maximum' as const } };
+        thermo: { fingerprint: item.fingerprint, channel: channel.key, instrument: channel.instrument, mode: channel.mode, scans: channel.scans,
+          scanRanges: item.scanRanges, scanSelectionReason: item.scanSelectionReason, method: 'mean-scan-maximum' as const } };
     });
     onImport(imported);
     setPending([]);
@@ -80,13 +86,36 @@ export function ThermoImport({ files, onImport }: { files: SpectrumFile[]; onImp
     <p role="status" lang="pt-BR">{available === null ? 'Verificando leitor RAW…' : readerStatus}</p>
     <ThermoReaderHelp local={local} connected={available === true} />
     <label className="secondary-button">Choose Thermo RAW files<input aria-label="Choose Thermo RAW files" type="file" multiple accept=".raw" disabled={!!progress || !available} onChange={event => { void read(Array.from(event.target.files ?? [])); event.target.value = ''; }} /></label>
-    <p>Extraction: highest intensity inside the ion tolerance in each scan, then mean across all scans in the selected spectrum type. Scans without signal contribute zero. No smoothing or normalization is applied during import.</p>
+    <details className="thermo-extraction-help"><summary>Como a média é calculada e como selecionar scans</summary>
+    <p>Extraction: highest intensity inside the ion tolerance in each scan, then mean across the selected scans in the selected spectrum type (all scans by default). Scans without signal contribute zero. No smoothing or normalization is applied during import.</p>
     <p>Condition, current, voltage and replicate are inferred from filenames and remain editable. LED OFF has no assumed current. Label 365LED is not assigned a wavelength automatically; enter nm in metadata if appropriate.</p>
+    <p>Escolha um trecho por um critério de qualidade da aquisição, como estabilidade do sinal, e registre o motivo. Selecionar apenas o intervalo que minimiza o erro entre réplicas pode enviesar o resultado. A seleção vale para todos os íons daquele arquivo; SD/SEM do gráfico continuam calculados entre arquivos de réplicas, não entre scans.</p>
+    <p>Os scans originais são preservados no projeto. Os intervalos aplicados ficam salvos e aparecem nos exports CSV/TXT. Você pode rever a seleção aqui, usar todos os scans ou desfazer com Undo.</p>
+    </details>
     {progress && <p role="status">{progress} <button type="button" className="secondary-button" onClick={() => controller.current?.abort()}>Cancel RAW import</button></p>}
     {messages.length > 0 && <div role="status">{messages.map((message, index) => <p key={index}>{message}</p>)}</div>}
     {pending.length > 0 && <><div className="table-shell"><table><thead><tr><th>File</th><th>Spectrum type</th><th>Scans</th><th>Condition / current / replicate</th></tr></thead><tbody>{pending.map((item, index) => {
       const metadata = inferMetadataFromFilename(item.filename);
-      return <tr key={item.fingerprint}><td>{item.filename}</td><td><select aria-label={`Spectrum type for ${item.filename}`} value={item.selected} onChange={event => setPending(current => current.map((file, i) => i === index ? {...file, selected: event.target.value} : file))}><option value="">Select spectrum type</option>{item.channels.map(channel => <option key={channel.key} value={channel.key}>{channel.label} · {channel.mode}</option>)}</select></td><td>{item.channels.find(c => c.key === item.selected)?.scans.length ?? '—'}</td><td>{metadata.condition || '—'} / {metadata.current ? `${metadata.current} mA` : '—'} / {metadata.replicate || '—'}</td></tr>;
-    })}</tbody></table></div><div className="control-button-row"><button className="primary-button" disabled={!!progress || pending.some(file => !file.selected)} onClick={add}>Add {pending.length} files</button><button className="secondary-button" disabled={!!progress} onClick={() => setPending([])}>Clear preview</button></div></>}
+      return <tr key={item.fingerprint}><td>{item.filename}</td><td><select aria-label={`Spectrum type for ${item.filename}`} value={item.selected} onChange={event => setPending(current => current.map((file, i) => i === index ? {...file, selected: event.target.value, scanRanges: undefined, scanSelectionReason: undefined, unappliedScanDraft: false} : file))}><option value="">Select spectrum type</option>{item.channels.map(channel => <option key={channel.key} value={channel.key}>{channel.label} · {channel.mode}</option>)}</select></td><td>{item.channels.find(c => c.key === item.selected)?.scans.length ?? '—'}</td><td>{metadata.condition || '—'} / {metadata.current ? `${metadata.current} mA` : '—'} / {metadata.replicate || '—'}</td></tr>;
+    })}</tbody></table></div>
+    {pending.map(item => {
+      const channel = item.channels.find(channel => channel.key === item.selected);
+      return channel && <div className="thermo-scan-file" key={`${item.fingerprint}-${channel.key}`}><h4>{item.filename}</h4>
+        <ThermoScanSelection filename={item.filename} scans={channel.scans} ranges={item.scanRanges} reason={item.scanSelectionReason} initialMz={channel.precursor || inferMetadataFromFilename(item.filename).parentIon || ""} tolerance={tolerance}
+          onApply={(scanRanges, scanSelectionReason) => setPending(current => current.map(file => file.fingerprint === item.fingerprint ? {...file, scanRanges, scanSelectionReason, unappliedScanDraft: false} : file))}
+          onDraftChange={unappliedScanDraft => setPending(current => current.map(file => file.fingerprint === item.fingerprint ? {...file, unappliedScanDraft} : file))} />
+      </div>;
+    })}
+    {pending.some(file => file.unappliedScanDraft) && <p role="status">Aplique ou corrija os intervalos editados antes de adicionar os arquivos.</p>}
+    <div className="control-button-row"><button className="primary-button" disabled={!!progress || pending.some(file => !file.selected || file.unappliedScanDraft)} onClick={add}>Add {pending.length} files</button><button className="secondary-button" disabled={!!progress} onClick={() => setPending([])}>Clear preview</button></div></>}
+    {files.some(file => file.thermo) && <div className="thermo-imported-scans" lang="pt-BR">
+      <h3>Scans dos arquivos importados</h3>
+      <p>Abra um arquivo para alterar os intervalos usados na média. Aplicar recalcula os dados e o gráfico; os scans originais ficam preservados.</p>
+      {files.filter(file => file.thermo).map(file => <div className="thermo-scan-file" key={file.id}>
+        <h4>{file.filename}</h4>
+        <ThermoScanSelection filename={file.filename} scans={file.thermo!.scans} ranges={file.thermo!.scanRanges} reason={file.thermo!.scanSelectionReason} initialMz={file.metadata.parentIon} tolerance={tolerance}
+          onApply={(ranges, reason) => onScanSelectionChange(file.id, ranges, reason)} />
+      </div>)}
+    </div>}
   </section>;
 }
