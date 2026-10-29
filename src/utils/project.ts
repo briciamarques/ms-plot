@@ -20,10 +20,12 @@ export function validateProjectSnapshot(value: unknown): ProjectSnapshot {
     catch { throw Error("Invalid project: invalid power calibration. Your current project was not replaced."); }
   }
   const ids = new Set<string>();
+  if (value.catalog !== undefined) requireValue(record(value.catalog) && record(value.catalog.selection) && value.catalog.selection.format === "ms-analysis-exchange" && typeof value.catalog.selectionManifest === "string", "invalid catalog receipt");
   for (const file of value.files) {
     requireValue(record(file) && typeof file.id === "string" && file.id.length > 0 && typeof file.filename === "string", "invalid file identity");
     requireValue(!ids.has(file.id), "duplicate file IDs"); ids.add(file.id);
     if (file.fingerprint !== undefined) requireValue(typeof file.fingerprint === "string", "invalid content fingerprint");
+    if (file.catalog !== undefined) requireValue(record(file.catalog) && record(file.catalog.input) && typeof file.catalog.input.inputId === "string" && record(file.catalog.input.intensity) && record(file.catalog.input.replication) && typeof file.catalog.txtBase64 === "string", "invalid catalog source");
     checkPeaks(file.peaks, file.filename);
     requireValue(record(file.metadata) && Object.values(file.metadata).every(item => typeof item === "string"), `${file.filename} has invalid metadata`);
     requireValue(Array.isArray(file.warnings) && file.warnings.every(item => typeof item === "string"), `${file.filename} has invalid warnings`);
@@ -53,6 +55,26 @@ export function validateProjectSnapshot(value: unknown): ProjectSnapshot {
   const settings = value.plotSettings;
   if (settings !== undefined) {
     requireValue(record(settings), "invalid plot settings");
+    if (settings.analysisMode !== undefined) requireValue(["intensity", "photodepletion"].includes(String(settings.analysisMode)), "invalid analysis mode");
+    if (settings.photodepletion !== undefined) {
+      const photo = settings.photodepletion;
+      requireValue(record(photo) && Array.isArray(photo.pairs), "invalid Photodepletion data");
+      requireValue(finite(photo.precursor) && photo.precursor > 0 && finite(photo.tolerance) && photo.tolerance >= 0, "invalid Photodepletion precursor/window");
+      requireValue(["mW", "µW"].includes(String(photo.unit)), "invalid Photodepletion power unit");
+      for (const key of ["means", "fit", "fitMeans", "origin"]) requireValue(typeof photo[key] === "boolean", `invalid Photodepletion ${key}`);
+      for (const key of ["min", "max"]) requireValue(typeof photo[key] === "string", `invalid Photodepletion ${key}`);
+      for (const key of ["xMin", "xMax", "yMin", "yMax"]) if (photo[key] !== undefined) requireValue(typeof photo[key] === "string", `invalid Photodepletion ${key}`);
+      requireValue(record(photo.labels) && Object.values(photo.labels).every(v => typeof v === "string"), "invalid Photodepletion labels");
+      const pairIds = new Set();
+      for (const pair of photo.pairs) {
+        requireValue(record(pair) && typeof pair.id === "string" && !pairIds.has(pair.id), "invalid or duplicate Photodepletion pair ID");
+        pairIds.add(pair.id);
+        for (const key of ["condition", "replicate", "wavelength_nm", "time", "current", "power", "off", "on", "off_time", "instrument", "geometry", "off_id", "on_id", "off_file", "on_file", "scale", "exclude_reason"]) requireValue(typeof pair[key] === "string", `invalid Photodepletion ${key}`);
+        if (pair.original !== undefined) requireValue(record(pair.original) && Object.values(pair.original).every(v => typeof v === "string"), "invalid original Photodepletion row");
+        if (pair.scaleReview !== undefined) requireValue(typeof pair.scaleReview === "string", "invalid comparability review");
+        if (pair.calibration !== undefined) validatePowerCalibration(pair.calibration);
+      }
+    }
     const enums: Record<string, readonly string[]> = {
       xAxis: xAxisOptions.map(option => option.key), yMode: ["absolute", "relative", "selectedSum"],
       curveMode: ["connect", "movingAverage", "polynomial", "exponential", "logistic", "auto"],
@@ -119,6 +141,7 @@ function normalizeProject(parsed: ProjectSnapshot): ProjectSnapshot {
     ions: parsed.ions,
     ...(typeof parsed.ionDraft === "string" ? { ionDraft: parsed.ionDraft } : {}),
     ...(parsed.powerCalibration ? {powerCalibration: parsed.powerCalibration} : {}),
+    ...(parsed.catalog ? {catalog: parsed.catalog} : {}),
     tolerance:
       typeof parsed.tolerance === "number" && Number.isFinite(parsed.tolerance)
         ? parsed.tolerance

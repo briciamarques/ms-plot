@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react";
-import type {LegendPosition, ProcessedRow, XAxisKey, SpectrumFile, ScanRange} from "../../types";
+import type {LegendPosition, ProcessedRow, XAxisKey, SpectrumFile, ProjectSnapshot, CatalogContext} from "../../types";
 import {xAxisOptions} from "../../types";
 import type {ColorPaletteId} from "../../utils/colorPalettes";
 import type {LegendMzDecimals} from "../../utils/format";
@@ -23,11 +23,12 @@ export type PlotBuilderProps = {
   onSettingsChange: (settings: Record<string, unknown>) => void;
   projectName: string;
   files: SpectrumFile[];
-  tolerance: number;
+  photoFiles?: SpectrumFile[];
+  getProject?: () => ProjectSnapshot;
+  onCatalogExport?: (context: CatalogContext) => void;
   processingBusy?: boolean;
   powerCalibration?: PowerCalibration;
   onPowerCalibrationChange?: (calibration: PowerCalibration) => void;
-  onScanSelectionChange?: (id: string, ranges: ScanRange[] | undefined, reason: string) => void;
 };
 
 export type PlotTab = "data" | "style";

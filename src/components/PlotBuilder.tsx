@@ -1,3 +1,6 @@
+import { exportCatalogResult, downloadPackage } from "../utils/catalogProject";
+import { PhotodepletionControls } from "./PhotodepletionControls";
+import { analyzePhoto, photoCsv, photoTraces, readPhotoState } from "../utils/photodepletion";
 import Plotly from "plotly.js-dist-min";
 import { Download, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -22,17 +25,21 @@ import type { SpectrumFile } from "../types";
 import { safeProjectFilename } from "../utils/project";
 import { PlotToolbar } from "./PlotToolbar";
 import { SavedPowerControls } from "./SavedPowerControls";
-import { ThermoPlotScanControls } from "./ThermoPlotScanControls";
 import { FitResults } from "./FitResults";
 import { readLegendMzDecimals } from "../utils/format";
 
 import { readPlotSetting, type PlotBuilderProps, type PlotTab, type PlotInteraction, type InteractivePlotElement, type PlotFont, type LineShape, type CurveMode, type TickFormat, type XValueScale, type JournalPresetKey, type FigureContent, type RasterDpi, type PlotStyleSettings, type SavedPlotStyle, MM_PER_INCH, STYLE_PRESETS_STORAGE_KEY, loadSavedPlotStyles, journalPresets, figureContentOptions, rasterDpiOptions, pointsToPixels, pixelsToPoints, pixelsFromMm, mmFromPixels, formatDecimal, axisLabel, defaultXAxisUnit, axisTitleWithUnit, tickFormatValue, normalizeHexColor, type ColorControlProps, ColorControl } from "./plot/controls";
 
-export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExpandedChange, initialSettings = {}, settingsRef, onSettingsChange, projectName, files, tolerance, processingBusy = false, onScanSelectionChange, powerCalibration, onPowerCalibrationChange }: PlotBuilderProps) {
+export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isActive = true, expanded, onExpandedChange, initialSettings = {}, settingsRef, onSettingsChange, projectName, files, photoFiles = files, processingBusy = false, powerCalibration, onPowerCalibrationChange }: PlotBuilderProps) {
+  const [analysisMode, setAnalysisMode] = useState(() => initialSettings.analysisMode === "photodepletion" ? "photodepletion" : "intensity");
+  const isPhoto = analysisMode === "photodepletion";
+  const [photo, setPhoto] = useState(() => readPhotoState(initialSettings.photodepletion));
+  const photoAnalysis = useMemo(() => analyzePhoto(photo, photoFiles), [photo, photoFiles]);
   const [collapsed, setCollapsed] = useState(false);
   const [previewZoom, setPreviewZoom] = useState("fit");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const catalogDownload = useRef<{signature: string; bytes: Uint8Array; name: string}>();
   const settingsInitialized = useRef<string | null>(null);
   const plotRef = useRef<HTMLDivElement | null>(null);
   const renderQueue = useRef<Promise<void>>(Promise.resolve());
@@ -117,13 +124,14 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
   const [previewAreaWidth, setPreviewAreaWidth] = useState(0);
   const [previewAreaHeight, setPreviewAreaHeight] = useState(0);
 
-  useEffect(() => { settingsRef.current = { xAxis, yMode, replicateMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, legendMzDecimals, highlightOnClick, highlightedIonId, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors, colorPalette }; const signature = JSON.stringify(settingsRef.current); if (settingsInitialized.current !== null && settingsInitialized.current !== signature) onSettingsChange(settingsRef.current); settingsInitialized.current = signature; });
+  useEffect(() => { settingsRef.current = { analysisMode, photodepletion: photo, xAxis, yMode, replicateMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, legendMzDecimals, highlightOnClick, highlightedIonId, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors, colorPalette }; const signature = JSON.stringify(settingsRef.current); if (settingsInitialized.current !== null && settingsInitialized.current !== signature) onSettingsChange(settingsRef.current); settingsInitialized.current = signature; });
 
   const shouldShowLegend =
-    showLegend && (forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
+    showLegend && (isPhoto || forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
   const hasVisibleTitle = showTitle && title.trim().length > 0;
 
   const ionOptions = useMemo(() => {
+    if (isPhoto) return photoAnalysis.series.map(([ionId, name], index) => ({ionId, name, fallbackColor: paletteColor(colorPalette, -1, index)}));
     const options = new Map<
       string,
       { ionId: string; name: string; fallbackColor: string }
@@ -140,11 +148,11 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
     });
 
     return Array.from(options.values());
-  }, [rows, colorPalette]);
+  }, [rows, colorPalette, isPhoto, photoAnalysis]);
 
   const plotData = useMemo(
     () =>
-      buildPlotData(rows, xAxis, yMode, shouldShowLegend, {
+      isPhoto ? photoTraces(photoAnalysis, photo, traceColors, colorPalette, markerSize, lineWidth, shouldShowLegend) : buildPlotData(rows, xAxis, yMode, shouldShowLegend, {
         legendMzDecimals,
         replicateMode,
         colors: traceColors,
@@ -158,6 +166,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
         highlightedIonId: highlightOnClick ? highlightedIonId : undefined,
       }, xValueMultiplier),
     [
+      isPhoto, photoAnalysis, photo,
       legendMzDecimals,
       replicateMode,
       curveMode,
@@ -240,8 +249,8 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
     const error = trace.error_y?.array[index] ?? 0;
     return [y - error, y + error];
   }))), [plotData]);
-  const xAxisRange = useMemo(() => axisRange(xMin, xMax, xDataBounds), [xMin, xMax, xDataBounds]);
-  const yAxisRange = useMemo(() => axisRange(yMin, yMax, yDataBounds), [yMin, yMax, yDataBounds]);
+  const xAxisRange = useMemo(() => axisRange(isPhoto ? (photo.xMin ?? "") : xMin, isPhoto ? (photo.xMax ?? "") : xMax, xDataBounds), [xMin, xMax, xDataBounds, isPhoto, photo.xMin, photo.xMax]);
+  const yAxisRange = useMemo(() => axisRange(isPhoto ? (photo.yMin ?? "") : yMin, isPhoto ? (photo.yMax ?? "") : yMax, yDataBounds), [yMin, yMax, yDataBounds, isPhoto, photo.yMin, photo.yMax]);
 
   useEffect(() => {
     const refreshCloudPresets = () => setSavedPlotStyles(loadSavedPlotStyles());
@@ -316,7 +325,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
     const layout = {
       title: hasVisibleTitle
         ? {
-            text: title,
+            text: isPhoto ? "Photodepletion" : title,
             font: { size: titleSize, family: fontFamily },
             xref: "paper",
             x: 0.5,
@@ -324,8 +333,9 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
           }
         : undefined,
       xaxis: {
+        ...(isPhoto ? {type: "linear"} : {}),
         title: {
-          text: axisTitleWithUnit(xTitle, xUnit),
+          text: isPhoto ? `Optical power (${photo.unit})` : axisTitleWithUnit(xTitle, xUnit),
           font: { size: axisTitleSize, family: fontFamily },
         },
         automargin: true,
@@ -345,8 +355,9 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
         zeroline: false,
       },
       yaxis: {
+        ...(isPhoto ? {type: "linear"} : {}),
         title: {
-          text: axisTitleWithUnit(yTitle, yUnit),
+          text: isPhoto ? "ln(I_OFF/I_ON)" : axisTitleWithUnit(yTitle, yUnit),
           font: { size: axisTitleSize, family: fontFamily },
         },
         automargin: true,
@@ -386,7 +397,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
         color: axisColor,
       },
       hovermode: "closest",
-      uirevision: JSON.stringify([xAxis, yMode, xValueMultiplier, xMin, xMax, yMin, yMax, renderAttempt, rows.length, rows[0]?.id, rows[rows.length - 1]?.id]),
+      uirevision: JSON.stringify([analysisMode, photo.unit, photo.xMin, photo.xMax, photo.yMin, photo.yMax, xAxis, yMode, xValueMultiplier, xMin, xMax, yMin, yMax, renderAttempt, rows.length, rows[0]?.id, rows[rows.length - 1]?.id]),
     };
 
     const interactive = plotElement as InteractivePlotElement;
@@ -871,6 +882,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
   const setRangeToDataLimits = () => {
     const xLimits = xDataBounds?.[0] === xDataBounds?.[1] ? axisRange("", "", xDataBounds).range : xDataBounds;
     const yLimits = yDataBounds?.[0] === yDataBounds?.[1] ? axisRange("", "", yDataBounds).range : yDataBounds;
+    if (isPhoto) {setPhoto(current => ({...current, xMin: xLimits ? String(xLimits[0]) : "", xMax: xLimits ? String(xLimits[1]) : "", yMin: yLimits ? String(yLimits[0]) : "", yMax: yLimits ? String(yLimits[1]) : ""})); return;}
     if (xLimits) {
       setXMin(String(xLimits[0]));
       setXMax(String(xLimits[1]));
@@ -890,6 +902,7 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
   };
 
   const clearAxisRanges = () => {
+    if (isPhoto) {setPhoto(current => ({...current, xMin: "", xMax: "", yMin: "", yMax: ""})); setRenderAttempt(value => value + 1); return;}
     setXMin("");
     setXMax("");
     setYMin("");
@@ -898,20 +911,48 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
   };
 
   const exportImage = async (format: "png" | "svg") => {
-    if (!plotRef.current || !plotData.length) return;
+    if (!plotRef.current || !plotData.length) {setExportError(isPhoto ? "Nenhum par válido para exportar a figura. O CSV/TXT inclui os pares excluídos." : "No plotted data to export."); return;}
+    if (xAxisRange.error || yAxisRange.error) {setExportError("Corrija os limites dos eixos antes de exportar a figura."); return;}
     setExporting(true); setExportError("");
     try {
       if (format === "png" && safeExportWidth * safeExportHeight > 40000000) throw new Error("PNG export is limited to 40 million pixels. Reduce the dimensions or use SVG.");
       await renderQueue.current;
-      await Plotly.downloadImage(plotRef.current, {format, filename: safeProjectFilename(projectName).replace(".pdmsplot.json", "-plot"), width: safeExportWidth, height: safeExportHeight, scale: 1});
+      await Plotly.downloadImage(plotRef.current, {format, filename: safeProjectFilename(projectName).replace(".pdmsplot.json", isPhoto ? "-photodepletion" : "-plot"), width: safeExportWidth, height: safeExportHeight, scale: 1});
     } catch (error) { setExportError(error instanceof Error ? error.message : "Export failed. Try a smaller image."); }
     finally { setExporting(false); }
   };
 
+  const exportCatalog = async () => {
+    if (!getProject || !plotRef.current || !plotData.length || xAxisRange.error || yAxisRange.error || processingBusy || plotError) {setExportError("Aguarde o processamento e corrija o gráfico antes de exportar."); return;}
+    setExporting(true); setExportError("");
+    try {
+      const snapshot = structuredClone({...getProject(), plotSettings: settingsRef.current});
+      const signature = JSON.stringify(snapshot);
+      const ensureUnchanged = () => {if (JSON.stringify({...getProject(), plotSettings: settingsRef.current}) !== signature) throw Error("O projeto mudou durante a exportação. Exporte novamente para manter figura, dados e versão consistentes.");};
+      if (catalogDownload.current?.signature === signature) {downloadPackage(catalogDownload.current.bytes, catalogDownload.current.name); return;}
+      if (safeExportWidth * safeExportHeight > 40000000) throw Error("Reduza a figura para no máximo 40 milhões de pixels.");
+      await renderQueue.current;
+      const url = await Plotly.toImage(plotRef.current, {format: "png", width: safeExportWidth, height: safeExportHeight, scale: 1});
+      ensureUnchanged();
+      const png = Uint8Array.from(atob(url.split(",")[1]), c => c.charCodeAt(0));
+      const csv = isPhoto ? photoCsv(photoAnalysis, photo) : plotRowsToCsv(rows, xAxis, yMode, xValueMultiplier, axisTitleWithUnit(xTitle, xUnit), ",", curveMode === "movingAverage" ? movingAverageWindow : undefined);
+      const result = await exportCatalogResult(snapshot, png, rows, csv);
+      ensureUnchanged();
+      const name = `${safeProjectFilename(projectName).replace(".pdmsplot.json", "")}-${result.manifest.result.versionId}.ms-result.zip`;
+      catalogDownload.current = {signature: JSON.stringify({...snapshot, catalog: result.project.catalog}), bytes: result.bytes, name};
+      onCatalogExport?.(result.project.catalog!);
+      downloadPackage(result.bytes, name);
+      setExportError("Pacote baixado: PNG + CSV + projeto editável. Importe o ZIP no estudo do MS Catalog para salvar esta versão.");
+    } catch (error) {setExportError(error instanceof Error ? error.message : "Falha ao exportar pacote");}
+    finally {setExporting(false);}
+  };
+
   const exportPlotCsv = (format: "csv" | "txt" = "csv") => {
-    if (rows.length === 0) {
+    if (isPhoto) {
+      downloadTextFile(`${safeProjectFilename(projectName).replace(".pdmsplot.json", "-photodepletion")}.${format}`, photoCsv(photoAnalysis, photo, format === "txt" ? "\t" : ","), format === "txt" ? "text/plain;charset=utf-8" : "text/csv;charset=utf-8");
       return;
     }
+    if (rows.length === 0) { return; }
 
     downloadTextFile(
       `${safeProjectFilename(projectName).replace(".pdmsplot.json", "-plot-data")}.${format}`,
@@ -930,7 +971,8 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
 
   return (
     <section className="workspace-section plot-workspace-section">
-      <PlotToolbar disabled={!rows.length || processingBusy} exporting={exporting} collapsed={collapsed} onCollapse={() => setCollapsed(value => !value)} expanded={expanded} onExpand={() => onExpandedChange(!expanded)} previewZoom={previewZoom} onPreviewZoom={setPreviewZoom} onImage={format => void exportImage(format)} onData={exportPlotCsv} />
+      <PlotToolbar disabled={(isPhoto ? !photo.pairs.length : !rows.length) || processingBusy} exporting={exporting} collapsed={collapsed} onCollapse={() => setCollapsed(value => !value)} expanded={expanded} onExpand={() => onExpandedChange(!expanded)} previewZoom={previewZoom} onPreviewZoom={setPreviewZoom} onImage={format => void exportImage(format)} onData={exportPlotCsv} />
+      {getProject?.().catalog && <div className="control-button-row"><button type="button" className="secondary-button" disabled={exporting || processingBusy} onClick={() => void exportCatalog()}>Baixar resultado para MS Catalog</button><span>PNG + CSV + projeto · transferência por arquivo</span></div>}
       {exportError && <p className="validation-notice" role="alert">{exportError}</p>}
       <div className={`plot-workbench ${collapsed ? "settings-collapsed" : ""}`}>
         <aside id="plot-settings" className="plot-settings-panel" aria-label="Plot settings" hidden={collapsed}>
@@ -951,11 +993,12 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
             </button>
           </div>
 
-          {onScanSelectionChange && <ThermoPlotScanControls files={files} tolerance={tolerance} active={isActive} onChange={onScanSelectionChange} />}
-          <FitResults traces={processingBusy ? [] : plotData} filename={safeProjectFilename(projectName).replace(".pdmsplot.json", "")} />
+          <label className="analysis-mode-control">Modo de análise<select aria-label="Modo de análise" value={analysisMode} onChange={event => setAnalysisMode(event.target.value)}><option value="intensity">Ion intensity</option><option value="photodepletion">Photodepletion</option></select></label>
+          <FitResults traces={isPhoto || processingBusy ? [] : plotData} filename={safeProjectFilename(projectName).replace(".pdmsplot.json", "")} />
           {activeTab === "data" ? (
             <div className="plot-menu">
-            <details className="plot-control-group plot-accordion">
+            {isPhoto && <PhotodepletionControls state={photo} onChange={setPhoto} analysis={photoAnalysis} files={photoFiles} calibration={powerCalibration} />}
+            <details hidden={isPhoto} className="plot-control-group plot-accordion">
               <summary>Text and axes</summary>
             <div className="plot-accordion-content">
               <label><span>Replicates</span><select aria-label="Replicates" value={replicateMode} onChange={event => setReplicateMode(event.target.value as ReplicateMode)}>
@@ -1140,8 +1183,8 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
                   <span>x min</span>
                   <input
                     type="number"
-                    value={xMin}
-                    onChange={(event) => setXMin(event.target.value)}
+                    value={isPhoto ? (photo.xMin ?? "") : xMin}
+                    onChange={(event) => isPhoto ? setPhoto(current => ({...current, xMin: event.target.value})) : setXMin(event.target.value)}
                     placeholder="auto"
                   />
                 </label>
@@ -1150,8 +1193,8 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
                   <span>x max</span>
                   <input
                     type="number"
-                    value={xMax}
-                    onChange={(event) => setXMax(event.target.value)}
+                    value={isPhoto ? (photo.xMax ?? "") : xMax}
+                    onChange={(event) => isPhoto ? setPhoto(current => ({...current, xMax: event.target.value})) : setXMax(event.target.value)}
                     placeholder="auto"
                   />
                 </label>
@@ -1160,8 +1203,8 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
                   <span>y min</span>
                   <input
                     type="number"
-                    value={yMin}
-                    onChange={(event) => setYMin(event.target.value)}
+                    value={isPhoto ? (photo.yMin ?? "") : yMin}
+                    onChange={(event) => isPhoto ? setPhoto(current => ({...current, yMin: event.target.value})) : setYMin(event.target.value)}
                     placeholder="auto"
                   />
                 </label>
@@ -1170,8 +1213,8 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
                   <span>y max</span>
                   <input
                     type="number"
-                    value={yMax}
-                    onChange={(event) => setYMax(event.target.value)}
+                    value={isPhoto ? (photo.yMax ?? "") : yMax}
+                    onChange={(event) => isPhoto ? setPhoto(current => ({...current, yMax: event.target.value})) : setYMax(event.target.value)}
                     placeholder="auto"
                   />
                 </label>
@@ -1475,8 +1518,9 @@ export function PlotBuilder({ rows: sourceRows, isActive = true, expanded, onExp
           </div>
             </details>
 
+          {isPhoto && <div className="style-grid"><label>Line width<input type="number" min="0.5" step="0.1" value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} /></label><label>Marker size<input type="number" min="0" step="0.5" value={markerSize} onChange={e => setMarkerSize(Number(e.target.value))} /></label></div>}
           <details
-            className="plot-control-group plot-accordion"
+            className="plot-control-group plot-accordion" hidden={isPhoto}
           >
             <summary>Curve</summary>
             <div className="plot-accordion-content">

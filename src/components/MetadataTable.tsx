@@ -223,13 +223,14 @@ export function MetadataTable({
                       onChange={(event) =>
                         onToggleFile(file.id, event.target.checked)
                       }
-                      aria-label={`Select ${file.filename}`}
+                      aria-label={`Select ${file.filename}${file.catalog ? ` · ${file.catalog.input.inputId}` : ""}`}
                     />
                   </td>
                   <td className="filename-cell">
                     <span className="filename-truncate" title={file.filename}>
                       {file.filename}
                     </span>
+                    {file.catalog && <small style={{display: "block", overflowWrap: "anywhere"}}>{file.catalog.input.inputId}<br />{file.catalog.input.intensity.state}</small>}
                   </td>
                   {visibleMetadataFields.map((field) => (
                     <td key={field.key}>
@@ -239,7 +240,7 @@ export function MetadataTable({
                           onUpdateMetadata(file.id, field.key, event.target.value)
                         }
                         placeholder={field.placeholder}
-                        aria-label={`${field.label} for ${file.filename}`}
+                        aria-label={`${field.label} for ${file.filename}${file.catalog ? ` · ${file.catalog.input.inputId}` : ""}`}
                       />
                     </td>
                   ))}

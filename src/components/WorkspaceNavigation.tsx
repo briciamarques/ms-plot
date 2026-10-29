@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-export type WorkspaceTab = "files" | "bruker" | "thermo" | "ions" | "plot" | "data";
+export type WorkspaceTab = "files" | "ions" | "plot" | "data";
 const tabs: {key: WorkspaceTab; label: string}[] = [
-  {key: "files", label: "1 · Files & metadata"}, {key: "bruker", label: "Bruker files"},
-  {key: "thermo", label: "Thermo RAW"},
+  {key: "files", label: "1 · Files & metadata"},
   {key: "ions", label: "2 · Ions"}, {key: "plot", label: "3 · Plot"}, {key: "data", label: "4 · Data"},
 ];
 

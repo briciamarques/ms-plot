@@ -3,7 +3,7 @@ import type { ProcessedRow, XAxisKey, YMode } from "../types";
 import { xAxisOptions, yModeOptions } from "../types";
 import { movingAverageByRow, rowsForPlotAxis } from "./plot";
 
-const escapeCsvValue = (value: string | number | null): string => {
+export const escapeCsvValue = (value: string | number | null): string => {
   const stringValue = value === null ? "" : String(value);
 
   if (/[",\t\n\r]/.test(stringValue)) {

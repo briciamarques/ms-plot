@@ -124,6 +124,7 @@ export const processSpectra = (
         fileId: file.id,
         ionId: ion.id,
         filename: file.filename,
+        ...(file.catalog ? {catalogAcquisition: file.catalog.input.rawSource?.sha256 || file.catalog.input.replication.experimentalUnit || ""} : {}),
         ...(file.bruker ? { seriesId: file.bruker.runId ?? file.bruker.source } : {}),
         ...(file.thermo ? { acquisitionKey: file.thermo.channel,
           thermoScanSelections: [{filename: file.filename, channel: file.thermo.channel,

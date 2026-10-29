@@ -1381,3 +1381,23 @@ input[aria-invalid="true"] { border-color: #be123c; background: #fff7f8; }
 .plot-accordion-content details { font-size: .8rem; }
 .plot-accordion-content details > summary { cursor: pointer; }
 .plot-accordion-content .data-table { min-width: 0; }
+
+/* Photodepletion reuses the plot sidebar, preview and publication styles. */
+.analysis-mode-control, .photo-controls label { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; }
+.photo-controls .checkbox-label { flex-direction: row; align-items: center; white-space: normal; }
+.photo-controls .plot-control-group { display: block; }
+.photo-controls textarea { width: 100%; resize: vertical; }
+.photo-controls details { padding: 10px; margin-bottom: 12px; }
+.photo-controls p { overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
+.photo-review-table { overflow-x: auto; }
+.photo-review-table td, .photo-review-table th { padding: 5px; text-align: left; }
+.photo-pair-editor { border-top: 1px solid #ccc; padding-top: 8px; }
+[hidden] { display: none !important; }
+
+.photo-controls, .photo-pair-editor, .photo-controls .style-grid, .photo-controls label { min-width: 0; max-width: 100%; }
+.photo-controls input:not([type="checkbox"]), .photo-controls select, .photo-controls textarea, .analysis-mode-control select { width: 100%; min-width: 0; max-width: 100%; padding: 8px; border: 1px solid var(--line, #ccc); border-radius: 6px; background: #fffef8; }
+.photo-controls .style-grid { grid-template-columns: minmax(0, 1fr); }
+.photo-controls details { min-width: 0; }
+.photo-review-table table { width: 100%; table-layout: fixed; font-size: 12px; }
+.photo-review-table td, .photo-review-table th, .photo-review-table button { overflow-wrap: anywhere; min-width: 0; white-space: normal; }
+.photo-review-table td:first-child, .photo-review-table th:first-child { width: 32%; }

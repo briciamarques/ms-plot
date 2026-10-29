@@ -9,6 +9,7 @@ declare module "plotly.js-dist-min" {
       config?: Record<string, unknown>,
     ) => Promise<HTMLElement>;
     purge: (root: HTMLElement) => void;
+    toImage: (root: HTMLElement, options: Record<string, unknown>) => Promise<string>;
     downloadImage: (
       root: HTMLElement,
       options: Record<string, unknown>,

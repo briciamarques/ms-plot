@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "test": "node tests/bruker.mjs && node tests/thermo.mjs && node tests/workspace.mjs && node tests/power.mjs && node tests/browser-backup.cjs && node tests/cloud-presets.cjs && node tests/cloud-new-project.cjs",
+    "test": "node tests/bruker.mjs && node tests/thermo.mjs && node tests/workspace.mjs && node tests/power.mjs && node tests/browser-backup.cjs && node tests/cloud-presets.cjs && node tests/cloud-new-project.cjs && node tests/catalog.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview"

@@ -21,6 +21,11 @@ export function aggregateReplicates(rows: ProcessedRow[], axis: XAxisKey, mode: 
   const result: ProcessedRow[] = [];
   for (const [key, group] of groups) {
     const labels = group.map(row => row.metadata.replicate.trim().replace(/^0+(?=\d)/, ""));
+    const acquisitions = group.map(row => row.catalogAcquisition).filter(Boolean);
+    if (new Set(acquisitions).size !== acquisitions.length) {
+      warnings.push(`Cannot aggregate ${group[0].filename}: averages from the same acquisition are not independent experimental replicates. Select one average or use individual files.`);
+      continue;
+    }
     if (labels.some(label => !label) || new Set(labels).size !== group.length || new Set(group.map(row => row.fileId)).size !== group.length) {
       warnings.push(`Cannot aggregate ${group[0].filename}: missing or repeated replicate IDs at this condition. Edit metadata or use individual files.`);
       continue;
@@ -35,7 +40,7 @@ export function aggregateReplicates(rows: ProcessedRow[], axis: XAxisKey, mode: 
       absoluteIntensity: mean(group.map(r => r.absoluteIntensity)),
       relativeIntensity: mean(group.map(r => r.relativeIntensity)),
       selectedIonPercent: mean(group.map(r => r.selectedIonPercent)),
-      statistics: { n: group.length, sd, sem: sd === null ? null : sd / Math.sqrt(group.length), files: group.map(r => r.filename) },
+      statistics: { n: group.length, sd, sem: sd === null ? null : sd / Math.sqrt(group.length), files: group.map(r => r.filename), fileIds: group.map(r => r.fileId) },
       ...(group.some(row => row.thermoScanSelections) ? {thermoScanSelections: group.flatMap(row => row.thermoScanSelections ?? [])} : {}),
       warning: [...new Set(group.map(r => r.warning).filter(Boolean))].join("; "),
     });

@@ -1,4 +1,14 @@
 import type { PowerCalibration } from "./utils/powerCalibration";
+import type { Input, SelectionPackage } from "./utils/analysis-exchange";
+
+export type CatalogContext = {
+  selection: SelectionPackage;
+  selectionManifest: string;
+  resultId?: string;
+  versionId?: string;
+  envelopeExtensions?: Record<string, import("./utils/analysis-exchange").Json>;
+  resultExtensions?: Record<string, import("./utils/analysis-exchange").Json>;
+};
 
 export type Peak = {
   mz: number;
@@ -43,6 +53,7 @@ export type SpectrumFile = {
   validLineCount: number;
   invalidLineCount: number;
   warnings: string[];
+  catalog?: { input: Input; txtBase64: string };
   thermo?: {
     fingerprint: string;
     channel: string;
@@ -96,8 +107,9 @@ export type ProcessedRow = {
   selectedIonPercent: number;
   warning: string;
   acquisitionKey?: string;
+  catalogAcquisition?: string;
   thermoScanSelections?: ThermoScanSelection[];
-  statistics?: { n: number; sd: number | null; sem: number | null; files: string[] };
+  statistics?: { n: number; sd: number | null; sem: number | null; files: string[]; fileIds?: string[] };
 };
 
 export type XAxisKey =
@@ -129,6 +141,7 @@ export type ProjectSnapshot = {
   plotSettings?: Record<string, unknown>;
   ionDraft?: string;
   powerCalibration?: PowerCalibration;
+  catalog?: CatalogContext;
 };
 
 export const metadataFields: Array<{

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BrukerImport } from "./components/BrukerImport";
-import { ThermoImport } from "./components/ThermoImport";
+import { DataSources } from "./components/DataSources";
+import { CatalogExchange } from "./components/CatalogExchange";
 import { FileUpload } from "./components/FileUpload";
 import { IonSelectionPanel, formatIonText } from "./components/IonSelectionPanel";
 import { WorkspacePanelBoundary } from "./components/WorkspacePanelBoundary";
@@ -9,10 +9,9 @@ import { ProjectPanel } from "./components/ProjectPanel";
 import { WorkspaceNavigation, type WorkspaceTab } from "./components/WorkspaceNavigation";
 import { ProcessedDataTable } from "./components/ProcessedDataTable";
 import { SegmentSpectrumExport } from "./components/SegmentSpectrumExport";
-import type { IonTarget, MetadataField, ScanRange, SpectrumFile } from "./types";
+import type { IonTarget, MetadataField, SpectrumFile } from "./types";
 import { emptyMetadata } from "./types";
 import { createId } from "./utils/id";
-import { defaultPlotAppearance } from "./utils/plot";
 import { normalizeIntensities } from "./utils/processing";
 import { calibratedFiles } from "./utils/powerCalibration";
 import { withSavedPowerCalibration } from "./utils/savedPowerCalibration";
@@ -51,7 +50,6 @@ function App() {
   const [plotVisited, setPlotVisited] = useState(false);
   const [plotExpanded, setPlotExpanded] = useState(false);
   const [plotRevision, setPlotRevision] = useState(0);
-  const [importRevision, setImportRevision] = useState(0);
   const plotSettingsRef = useRef<Record<string, unknown>>(project.plotSettings ?? {});
   const [projectStatus, setProjectStatus] = useState("");
   const [importProgress, setImportProgress] = useState("");
@@ -79,18 +77,15 @@ function App() {
   const onPlotSettingsChange = useCallback((settings: Record<string, unknown>) => {
     if (JSON.stringify(currentRef.current.plotSettings ?? {}) !== JSON.stringify(settings)) patch({plotSettings: settings}, "plot");
   }, [currentRef, patch]);
-  const updateScanSelection = useCallback((id: string, scanRanges: ScanRange[] | undefined, scanSelectionReason: string) => {
-    patch({files: currentRef.current.files.map(file => file.id === id && file.thermo ? {...file, thermo: {...file.thermo, scanRanges, scanSelectionReason}} : file)}, `scans:${id}`);
-  }, [currentRef, patch]);
   const historyAction = (direction: "undo" | "redo") => { session[direction](); setPlotRevision(value => value + 1); setProjectStatus(direction === "undo" ? "Change undone" : "Change restored"); };
-  const changePlot = (settings: Record<string, unknown>) => { patch({plotSettings: settings}, "import"); setPlotRevision(value => value + 1); };
 
   const handleFilesSelected = async (uploads: FileList | File[]) => {
     if (importController.current) return;
     const controller = new AbortController(); importController.current = controller;
     const epoch = importEpoch.current;
     const loaded: SpectrumFile[] = [], messages: string[] = [];
-    const known = new Set(currentRef.current.files.map(file => file.fingerprint).filter(Boolean));
+    const known = new Set(currentRef.current.files.map(file => `${file.filename}\u0000${file.fingerprint}`));
+    const fingerprints = new Set(currentRef.current.files.map(file => file.fingerprint).filter(Boolean));
     const chosen = Array.from(uploads);
     setImportMessages([]);
     try {
@@ -102,8 +97,11 @@ function App() {
           if (file.size > 128 * 1024 * 1024) throw new Error("TXT files must be at most 128 MB");
           const parsed = await readTxt(file, controller.signal);
           if (!parsed.peaks.length) throw new Error(parsed.warnings.join(" "));
-          if (known.has(parsed.fingerprint)) throw new Error("Duplicate content; already imported or selected");
-          known.add(parsed.fingerprint);
+          const identity = `${file.name}\u0000${parsed.fingerprint}`;
+          if (known.has(identity)) throw new Error("Este TXT, com o mesmo nome e conteúdo, já foi importado");
+          known.add(identity);
+          if (fingerprints.has(parsed.fingerprint)) parsed.warnings.push("Conteúdo idêntico a outro TXT; arquivo preservado separadamente. Revise a aquisição de origem antes de contar como réplica.");
+          fingerprints.add(parsed.fingerprint);
           loaded.push({id: createId("file"), filename: file.name, metadata: {...emptyMetadata(), ...inferMetadataFromFilename(file.name)}, ...parsed});
         } catch (error) {
           if (controller.signal.aborted) break;
@@ -133,7 +131,7 @@ function App() {
   };
   const resetImports = () => {
     importEpoch.current++; importController.current?.abort(); importController.current = undefined;
-    setImportProgress(""); setImportMessages([]); setImportRevision(value => value + 1);
+    setImportProgress(""); setImportMessages([]);
   };
   const newProject = () => {
     resetImports();
@@ -177,7 +175,11 @@ function App() {
         {processing.busy && <div className="processing-status" role="status">Processing spectra in the background… <button type="button" onClick={processing.cancel}>Cancel processing</button></div>}
         {processing.error && <div className="validation-notice" role="alert">{processing.error} <button type="button" onClick={processing.retry}>Retry processing</button></div>}
         <div id="panel-files" role="tabpanel" aria-labelledby="tab-files" hidden={activeWorkspaceTab !== "files"}>
-          {files.length === 0 && <section className="workspace-section welcome-panel"><p className="section-kicker">Start your analysis</p><h2>From spectra to a publication figure</h2><p>Import spectra, review metadata, choose ions, then build and export your plot. TXT and Bruker exports stay in your browser; Thermo RAW uses the reader on this computer.</p><div className="welcome-actions"><button className="secondary-button" onClick={() => selectTab("bruker")}>Import Bruker exports</button><button className="secondary-button" onClick={() => selectTab("thermo")}>Import Thermo RAW</button><button className="secondary-button" disabled={!!importProgress} onClick={() => void loadExamples()}>Try sample data</button></div></section>}
+          <CatalogExchange project={project} onOpen={snapshot => {resetImports(); session.restore(snapshot); setPlotRevision(value => value + 1); setPlotVisited(false); setProjectStatus("Pacote do catálogo aberto; Undo recupera o projeto anterior.");}} />
+          <DataSources hasFiles={files.length > 0} hasLegacyFiles={files.some(file => file.thermo || file.bruker)} loading={!!importProgress} onExamples={() => void loadExamples()} onPhotodepletion={() => {
+            patch({plotSettings: {...currentRef.current.plotSettings, analysisMode: "photodepletion"}}, "plot");
+            setPlotRevision(value => value + 1); selectTab("plot");
+          }} />
           <FileUpload onFilesSelected={handleFilesSelected} isLoading={!!importProgress} />
           {importProgress && <div role="status" className="processing-status">{importProgress} <button onClick={() => importController.current?.abort()}>Cancel import</button></div>}
           {importMessages.length > 0 && <div className="validation-notice" role="status">{importMessages.map(message => <p key={message}>{message}</p>)}</div>}
@@ -189,29 +191,10 @@ function App() {
             onUpdateMetadata={updateMetadata} onApplyBulkMetadata={(field, value) => patch({files: files.map(file => selectedIds.has(file.id) ? {...file, metadata: {...file.metadata, [field]: value}} : file)})}
             onRemoveSelected={() => patch({files: files.filter(file => !selectedIds.has(file.id)), selectedFileIds: []})} />}
         </div>
-        <div id="panel-thermo" role="tabpanel" aria-labelledby="tab-thermo" hidden={activeWorkspaceTab !== "thermo"}><ThermoImport key={importRevision} files={files} tolerance={tolerance}
-          onScanSelectionChange={updateScanSelection}
-          onImport={imported => {
-          const nextIons = files.length === 0 ? [...new Set(imported.map(file => file.metadata.parentIon).filter(Boolean))].map(mz => ({id: createId("ion"), targetMz: mz, label: "precursor"})) : ions;
-          patch({files: [...files, ...imported], selectedFileIds: imported.map(file => file.id), plotSelectedOnly: true, ions: nextIons, ionDraft: formatIonText(nextIons)}, "import");
-          changePlot({...project.plotSettings, xAxis: "current", xTitle: "Current", xUnit: "mA", xValueScale: "raw", xValueMultiplier: 1, replicateMode: "sd", curveMode: "connect", xMin: "", xMax: "", yMin: "0", yMax: ""}); selectTab("ions");
-          setProjectStatus("RAW files added. Review ions and metadata. Mean ± SD is enabled.");
-        }} /></div>
-        <div id="panel-bruker" role="tabpanel" aria-labelledby="tab-bruker" hidden={activeWorkspaceTab !== "bruker"}><BrukerImport key={importRevision} onImport={(imported, originPreset, axis) => {
-          patch({files: [...files, ...imported], selectedFileIds: [...selectedIds, ...imported.map(file => file.id)]}, "import");
-          if (originPreset) {
-            const nextIons = [241, 255, 751, 311, 617, 375, 163, 271, 283].map(mass => ({id: createId("ion"), targetMz: String(mass), label: ""}));
-            patch({ions: nextIons, ionDraft: formatIonText(nextIons), selectedFileIds: imported.map(file => file.id), plotSelectedOnly: true}, "import");
-            changePlot({xAxis: "retentionTime", xTitle: "Time", xUnit: "min", xValueScale: "secondsToMinutes", xValueMultiplier: 1 / 60, yMode: "selectedSum", yTitle: "Relative intensity", yUnit: "%", yMin: "0", yMax: "100", xMin: "0", ...defaultPlotAppearance, curveMode: "movingAverage", movingAverageWindow: 5, lineShape: "linear", colorPalette: "trms", traceColors: {}}); selectTab("plot");
-          } else if (axis === "wavelength") {
-            patch({selectedFileIds: imported.map(file => file.id), plotSelectedOnly: true}, "import");
-            changePlot({...project.plotSettings, xAxis: "wavelength", xTitle: "Wavelength", xUnit: "nm", xValueScale: "raw", xValueMultiplier: 1, xMin: "", xMax: ""}); selectTab("ions");
-          } else if (!files.length) changePlot({xAxis: "retentionTime", xTitle: "Acquisition time", xUnit: "s"});
-        }} /></div>
         <div id="panel-ions" role="tabpanel" aria-labelledby="tab-ions" hidden={activeWorkspaceTab !== "ions"}><WorkspacePanelBoundary name="Ions">{() => <IonSelectionPanel ions={ions} ionText={project.ionDraft ?? formatIonText(ions)} onIonTextChange={value => patch({ionDraft: value}, "ionDraft")} tolerance={tolerance} roundingPrecisions={[...new Set(files.flatMap(file => file.bruker?.mzDecimals === undefined ? [] : [file.bruker.mzDecimals]))]} canSuggestIons={files.some(file => file.peaks.length > 0)} onIonsChange={updateIons} onToleranceChange={value => patch({tolerance: value}, "tolerance")} onSuggestIons={decimals => {
           const suggestions = suggestIonTargets(selectedIds.size ? files.filter(file => selectedIds.has(file.id)) : files, tolerance, 6, decimals); if (suggestions.length) updateIons(suggestions);
         }} />}</WorkspacePanelBoundary></div>
-        <div id="panel-plot" role="tabpanel" aria-labelledby="tab-plot" className="plot-panel-host" hidden={activeWorkspaceTab !== "plot"}>{plotVisited && <WorkspacePanelBoundary key={plotRevision} name="Plot">{() => <Suspense fallback={<p role="status">Loading plot tools…</p>}><PlotBuilder powerCalibration={project.powerCalibration} onPowerCalibrationChange={powerCalibration => patch({powerCalibration})} processingBusy={processing.busy} onScanSelectionChange={updateScanSelection} expanded={plotExpanded} onExpandedChange={setPlotExpanded} initialSettings={project.plotSettings ?? {legendPosition: "top"}} settingsRef={plotSettingsRef} onSettingsChange={onPlotSettingsChange} projectName={projectName} files={plottedFiles} tolerance={tolerance} rows={plottedRows} isActive={activeWorkspaceTab === "plot"} /></Suspense>}</WorkspacePanelBoundary>}</div>
+        <div id="panel-plot" role="tabpanel" aria-labelledby="tab-plot" className="plot-panel-host" hidden={activeWorkspaceTab !== "plot"}>{plotVisited && <WorkspacePanelBoundary key={plotRevision} name="Plot">{() => <Suspense fallback={<p role="status">Loading plot tools…</p>}><PlotBuilder getProject={() => currentRef.current} onCatalogExport={catalog => patch({catalog})} powerCalibration={project.powerCalibration} onPowerCalibrationChange={powerCalibration => patch({powerCalibration})} processingBusy={processing.busy} expanded={plotExpanded} onExpandedChange={setPlotExpanded} initialSettings={project.plotSettings ?? {legendPosition: "top"}} settingsRef={plotSettingsRef} onSettingsChange={onPlotSettingsChange} projectName={projectName} files={plottedFiles} photoFiles={files} rows={plottedRows} isActive={activeWorkspaceTab === "plot"} /></Suspense>}</WorkspacePanelBoundary>}</div>
         <div id="panel-data" role="tabpanel" aria-labelledby="tab-data" hidden={activeWorkspaceTab !== "data"}><SegmentSpectrumExport files={files} isActive={activeWorkspaceTab === "data"} /><ProcessedDataTable rows={processing.rows} projectName={projectName} /></div>
       </div>
     </main>
