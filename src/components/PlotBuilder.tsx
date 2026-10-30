@@ -1933,7 +1933,7 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
               }
             >
               {plotData.length === 0 ? (
-                <div className="plot-empty">No processed data</div>
+                <div className="plot-empty">{isPhoto ? "Nenhum par válido para o gráfico. Confira os motivos na revisão dos pares; o CSV preserva os excluídos." : "No processed data"}</div>
               ) : null}
               <div
                 ref={plotRef}

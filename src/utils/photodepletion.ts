@@ -12,6 +12,10 @@ export type PhotoPair = Record<PhotoField, string> & { id: string; original?: Re
 export type PhotoState = { pairs: PhotoPair[]; precursor: number; tolerance: number; unit: "mW" | "µW"; means: boolean; fit: boolean; fitMeans: boolean; origin: boolean; min: string; max: string; labels: Record<string, string>; xMin: string; xMax: string; yMin: string; yMax: string };
 export const defaultPhotoState = (): PhotoState => ({pairs: [], precursor: 457, tolerance: 0.5, unit: "mW", means: true, fit: true, fitMeans: true, origin: false, min: "", max: "", labels: {}, xMin: "", xMax: "", yMin: "", yMax: ""});
 export const newPhotoPair = (): PhotoPair => ({...Object.fromEntries(photoFields.map(key => [key, ""])), id: crypto.randomUUID(), scale: "unknown"} as PhotoPair);
+// A scale review belongs to the selected sources, not to the row position.
+export function changePhotoSource(pair: PhotoPair, side: "off" | "on", fileId: string): PhotoPair {
+  return pair[`${side}_file`] === fileId ? pair : {...pair, [`${side}_file`]: fileId, scale: "unknown", scaleReview: ""};
+}
 export function readPhotoState(value: unknown): PhotoState {
   if (!value || typeof value !== "object") return defaultPhotoState();
   const v = value as PhotoState;
@@ -112,6 +116,8 @@ export function analyzePhoto(state: PhotoState, files: SpectrumFile[]) {
       if (extracted.warning) warnings.push(`${side.toUpperCase()}: ${extracted.warning}`);
       const fileTime = file.metadata.activationTime;
       if (fileTime && (quantity(fileTime, "time") === null || quantity(fileTime, "time") !== time)) reasons.push(`Tempo ${side.toUpperCase()} do arquivo incompatível com o par`);
+      const fileWavelength = file.metadata.wavelength.trim();
+      if (fileWavelength && number(fileWavelength.replace(/\s*nm$/i, "")) !== wavelength) reasons.push(`Comprimento de onda ${side.toUpperCase()} do arquivo incompatível com o par; revise Files & metadata`);
       return extracted.absoluteIntensity;
     };
     const off = extract("off", offFile), on = extract("on", onFile);
@@ -123,7 +129,7 @@ export function analyzePhoto(state: PhotoState, files: SpectrumFile[]) {
     const offSetup = catalogSetup(offFile), onSetup = catalogSetup(onFile);
     const instruments = [...new Set([pair.instrument, offFile?.thermo?.instrument, onFile?.thermo?.instrument, offSetup.instrument, onSetup.instrument].filter(Boolean))];
     const geometries = [...new Set([pair.geometry, offSetup.geometry, onSetup.geometry].filter(Boolean))];
-    if ((offSetup.instrument && onSetup.instrument && offSetup.instrument !== onSetup.instrument) || (offSetup.setup && onSetup.setup && offSetup.setup !== onSetup.setup)) reasons.push("Instrumentos ou configurações ópticas OFF/ON do catálogo incompatíveis; revise as fontes");
+    if ((offSetup.instrument && onSetup.instrument && offSetup.instrument !== onSetup.instrument) || (offSetup.geometry && onSetup.geometry && offSetup.geometry !== onSetup.geometry) || (offSetup.setup && onSetup.setup && offSetup.setup !== onSetup.setup)) reasons.push("Instrumentos ou configurações ópticas OFF/ON do catálogo incompatíveis; revise as fontes");
     if (offFile?.thermo && onFile?.thermo && (offFile.thermo.instrument !== onFile.thermo.instrument || offFile.thermo.channel !== onFile.thermo.channel)) reasons.push("Instrumentos ou canais OFF/ON incompatíveis");
     const series = JSON.stringify([wavelength, time, instruments, geometries.join(" / "), offFile?.thermo?.channel ?? "", onFile?.thermo?.channel ?? "", ...(offSetup.setup || onSetup.setup ? [offSetup.setup, onSetup.setup] : [])]);
     const label = `${wavelength ?? "?"} nm · ${time ?? "?"} s${instruments.length ? ` · ${instruments.join(" / ")}` : ""}${geometries.length ? ` · ${geometries.join(" / ")}` : ""}`;

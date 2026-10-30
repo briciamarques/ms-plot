@@ -42,7 +42,12 @@ const revised=await exportCatalogResult(reopened.project,png,[],'');
 assert.equal(revised.manifest.result.resultId,result.manifest.result.resultId);
 assert.equal(revised.manifest.result.previousVersionId,result.manifest.result.versionId);
 assert.notEqual(revised.manifest.result.versionId,result.manifest.result.versionId);
-fs.writeFileSync('tests/fixtures/catalog-v1/ms-plot-result.zip',result.bytes);
+// Test runs must not rewrite the committed fixture with random UUIDs/timestamps.
+fs.writeFileSync(path.join(output,'ms-plot-result.zip'),result.bytes);
+const incompatibleGeometry=structuredClone(project);
+incompatibleGeometry.files[0].catalog.input.experiment.metadata={geometry:'near'};
+incompatibleGeometry.files[1].catalog.input.experiment.metadata={geometry:'far'};
+assert.match(analyzePhoto(incompatibleGeometry.plotSettings.photodepletion,incompatibleGeometry.files).results[0].reasons.join(),/configurações ópticas/);
 const members=unzipSync(original), m=JSON.parse(new TextDecoder().decode(members['manifest.json']));
 const corrupt={...members,[m.files[0].path]:new TextEncoder().encode('457 9\n')};
 await assert.rejects(readExchange(zipSync(corrupt)),/mismatch/);

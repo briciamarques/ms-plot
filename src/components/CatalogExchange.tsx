@@ -32,6 +32,6 @@ export function CatalogExchange({project, onOpen}: {project: ProjectSnapshot; on
 function SourceList({project}: {project: ProjectSnapshot}) {
   return <div className="photo-review-table"><table><thead><tr><th>TXT / average</th><th>Experimento / RAW</th><th>Escala e proveniência</th></tr></thead><tbody>{project.files.map(file => {
     const input = file.catalog?.input;
-    return <tr key={file.id}><td>{file.filename}<br /><small>{input?.inputId || "Arquivo local sem vínculo"}</small></td><td>{input?.experiment.name}<br />{input?.rawSource?.name || "RAW não identificado"}</td><td>{input?.intensity.state || "unknown"}<br />{input?.intensity.evidence}<details><summary>Ver receita, scans e metadados</summary><pre style={{whiteSpace: "pre-wrap", maxWidth: 600}}>{JSON.stringify(input, null, 2)}</pre></details></td></tr>;
+    return <tr key={file.id}><td>{file.filename}{input && input.spectrum.name !== file.filename && <><br />{input.spectrum.name}</>}<br /><small>{input?.inputId || "Arquivo local sem vínculo"}</small></td><td>{input?.experiment.name}<br />{input?.rawSource?.name || "RAW não identificado"}</td><td>{input?.intensity.state || "unknown"}<br />{input?.intensity.evidence}<details><summary>Ver receita, scans e metadados</summary><pre style={{whiteSpace: "pre-wrap", maxWidth: 600}}>{JSON.stringify(input, null, 2)}</pre></details></td></tr>;
   })}</tbody></table></div>;
 }

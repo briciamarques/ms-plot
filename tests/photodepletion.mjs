@@ -9,7 +9,7 @@ for (const name of ['utils/photodepletion','utils/csv','utils/plot','utils/proce
   const target = path.join(output, `${name}.mjs`); fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target, code);
 }
 const load = name => import(pathToFileURL(path.join(output, `${name}.mjs`)));
-const {defaultPhotoState, newPhotoPair, analyzePhoto, parsePhotoTable, photoCsv, photoTraces, photoTemplate, quantity} = await load('utils/photodepletion');
+const {defaultPhotoState, newPhotoPair, changePhotoSource, analyzePhoto, parsePhotoTable, photoCsv, photoTraces, photoTemplate, quantity} = await load('utils/photodepletion');
 const {emptyMetadata} = await load('types');
 const {createProjectSnapshot, parseProjectSnapshot} = await load('utils/project');
 const {defaultPowerCalibration} = await load('utils/powerCalibration');
@@ -44,6 +44,18 @@ const mixed=photoTraces(analyze([pair(),pair({replicate:'2'}),pair({condition:'P
 assert.equal(mixed.filter(t=>t.error_y).length,1); assert.deepEqual(mixed.find(t=>t.error_y).x,[.01]);
 const thermo=(id,values)=>({id,filename:`${id}.raw`,metadata:emptyMetadata(),peaks:[{mz:457,intensity:1}],warnings:[],validLineCount:1,invalidLineCount:0,thermo:{fingerprint:id,channel:'MS1',instrument:'T',mode:'centroid',method:'mean-scan-maximum',scans:values.map(v=>({timeSeconds:0,peaks:v?[{mz:457,intensity:v}]:[]}))}});
 const files=[thermo('off',[1000,0]),thermo('on',[100,400])];
+const reviewed=pair({off_file:'off',on_file:'on',scaleReview:'Verified original scale'});
+assert.equal(changePhotoSource(reviewed,'on','on'),reviewed);
+const switched=changePhotoSource(reviewed,'on','');
+assert.equal(switched.scaleReview,''); assert.equal(switched.scale,'unknown');
+assert.equal(analyze([switched],{},files).means.length,0);
+files[1].metadata.wavelength='280 nm';
+assert.match(analyze([reviewed],{},files).results[0].reasons.join(),/Comprimento de onda ON/);
+files[1].metadata.wavelength='365 nm';
+assert.equal(analyze([reviewed],{},files).results[0].reasons.length,0);
+files[1].metadata.wavelength='365';
+assert.equal(analyze([reviewed],{},files).results[0].reasons.length,0);
+files[1].metadata.wavelength='';
 const extracted=analyze([pair({off_file:'off',on_file:'on'})],{},files); near(extracted.results[0].off,500); near(extracted.results[0].on,250); near(extracted.results[0].y,Math.log(2)); assert.equal(extracted.means[0].n,1);
 files[1].thermo.scanRanges=[{start:1,end:1}]; near(analyze([pair({off_file:'off',on_file:'on'})],{},files).results[0].y,Math.log(5));
 assert.match(analyze([pair({off_file:'missing'})]).results[0].reasons.join(),/não encontrado/);
