@@ -84,7 +84,13 @@ cross-editor/catalog validation.
 
 ## Photodepletion (FMN / UVPD)
 
-Open **Plot → Modo de análise → Photodepletion**. Paste a table or import CSV/TSV
+Open **Plot → Modo de análise → Photodepletion**. Imported LED ON files prepare
+draft rows automatically, including wavelength, current, time and saved power
+calibration. No OFF association or intensity comparability is inferred. A missing
+OFF control is shown explicitly. The common-OFF selector can fill compatible,
+unassigned rows after an explicit source choice and comparability review; shared
+controls retain their correlation warning. `Preparar novos arquivos ON` appends
+only sources not already used. Alternatively, paste a table or import CSV/TSV
 using **Baixar modelo fictício**. Required headers are `condition`, `replicate`,
 `wavelength_nm`, `time`, `current`, `power`, `off`, `on`. Time, current and power
 require explicit units in each cell (for example `1 s`, `100 mA`, `10 µW`).
@@ -117,8 +123,8 @@ fits default to unweighted condition means with a free intercept, independently
 per series. Choose the power interval, or explicitly force the origin/use pairs.
 Results include slope (inverse displayed power unit), intercept, centered R² and
 number of fitted points. Constant Y has undefined R². No mechanistic conclusion
-is generated. Current is metadata; associating the saved current–power calibration
-requires an explicit choice per pair and saves a copy of its measurements/settings.
+is generated. New pairs copy the enabled saved current–power calibration;
+explicit measured powers and previously saved pairs retain their source.
 
 Existing **Style** presets, colors, fonts, dimensions, PNG/SVG and CSV/TXT exports
 are reused. CSV/TXT includes every original pair, values used, units, means/SD/n,
@@ -138,6 +144,10 @@ the current and wavelength in each spectrum select the matching measured power.
 The defaults use the 1 s current sweeps (12 currents at 280 nm, 22 at 365 nm),
 subtract the initial background and do not interpolate or assume a missing wavelength.
 The interval is the powermeter sampling interval, not irradiation time.
+The existing saved-calibration panel exposes optional linear interpolation for
+currents between measured points, without extrapolation. Photodepletion exposes
+the same choice for its pair snapshots. Provenance records the interpolation;
+power is a reference calibration estimate and requires matching optical alignment.
 
 New Photodepletion pairs also copy the enabled project calibration by default.
 Imported rows with a blank `power` use that calibration; an explicit measured
@@ -505,8 +515,11 @@ The filename parser recognizes compound, concentration, `457mz`, `act_1s`,
 `LED_ON`/`LED_OFF`, current (`mA`, `uA`, `A`), voltage (`V`, `mV`, `kV`), and
 replicates such as `rep1` or the final `_1` of an LED filename. Current is stored
 in mA and voltage in V. An attachment prefix such as `9-` is not a replicate.
-`365LED` alone is not silently interpreted as a calibrated wavelength; enter
-`365 nm` in the wavelength metadata when appropriate. LED OFF has no assumed
+`280LED_ON/OFF` and `365LED_ON/OFF` provide nominal wavelength hints. Explicit
+catalog wavelength, LED current and exposure metadata take priority over filename
+hints on import. Auto-fill fills blank fields only and preserves user edits and
+immutable catalog snapshots. Current, wavelength and time are visible when present.
+LED OFF has no assumed
 current. Activation duration is not used as acquisition time.
 
 Extraction uses the **maximum intensity within the target tolerance per scan,

@@ -9,7 +9,7 @@ for (const name of ['utils/photodepletion','utils/csv','utils/plot','utils/proce
   const target = path.join(output, `${name}.mjs`); fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target, code);
 }
 const load = name => import(pathToFileURL(path.join(output, `${name}.mjs`)));
-const {defaultPhotoState, newPhotoPair, changePhotoSource, analyzePhoto, parsePhotoTable, photoCsv, photoTraces, photoTemplate, quantity} = await load('utils/photodepletion');
+const {defaultPhotoState, newPhotoPair, changePhotoSource, analyzePhoto, parsePhotoTable, photoCsv, photoTraces, photoTemplate, quantity,preparePhotoPairs,compatiblePhotoControl} = await load('utils/photodepletion');
 const {emptyMetadata} = await load('types');
 const {createProjectSnapshot, parseProjectSnapshot} = await load('utils/project');
 const {defaultPowerCalibration} = await load('utils/powerCalibration');
@@ -75,6 +75,16 @@ assert.equal(newPhotoPair().calibration,undefined);
 assert.equal(newPhotoPair({...calibration,enabled:false}).calibration,undefined);
 defaultPair.calibration.measurements[0].powersW[0]=123;
 assert.equal(calibration.measurements[0].powersW[0],.00002);
+const onDraft={id:'draft-on',filename:'FMN_365LED_ON_act_1s_100mA_2.txt',metadata:emptyMetadata(),peaks:[{mz:457,intensity:10}],warnings:[],validLineCount:1,invalidLineCount:0};
+const offDraft={...onDraft,id:'draft-off',filename:'FMN_365LED_OFF_act_1s_1.txt'};
+const prepared=preparePhotoPairs([onDraft,offDraft],calibration);
+assert.equal(prepared.length,1);assert.equal(prepared[0].off_file,'');assert.equal(prepared[0].scale,'unknown');
+assert.equal(prepared[0].wavelength_nm,'365');assert.equal(prepared[0].current,'100 mA');assert.equal(prepared[0].time,'1 s');
+assert.equal(preparePhotoPairs([onDraft,offDraft],calibration,prepared).length,0);
+assert.equal(compatiblePhotoControl(prepared[0],offDraft,[onDraft,offDraft]),true);
+assert.equal(compatiblePhotoControl(prepared[0],{...offDraft,filename:'FMN_280LED_OFF_act_1s_1.txt'},[onDraft]),false);
+assert.equal(compatiblePhotoControl(prepared[0],{...offDraft,filename:'FMN_365LED_OFF_act_2s_1.txt'},[onDraft]),false);
+assert.equal(compatiblePhotoControl(prepared[0],onDraft,[onDraft]),false);
 near(analyze([pair({power:'',calibration})]).results[0].power,0.02);
 assert.equal(analyze([pair({power:''})]).means.length,0); // never implicitly use current as power
 assert.equal(analyze([pair({wavelength_nm:'280',power:'',calibration})]).means.length,0);

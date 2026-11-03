@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import type { MetadataField, SpectrumFile, SpectrumMetadata } from "../types";
 import { metadataFields } from "../types";
 import { TableTools } from "./TableTools";
-import { inferMetadataFromFilename } from "../utils/filenameMetadata";
+import { fillBlankMetadataFromSources } from "../utils/filenameMetadata";
 
 type MetadataTableProps = {
   files: SpectrumFile[];
@@ -54,7 +54,7 @@ export function MetadataTable({
   const selectedCount = selectedIds.size;
   const allSelected = files.length > 0 && files.every((file) => selectedIds.has(file.id));
   const visibleMetadataFields = metadataFields.filter((field) =>
-    visibleFieldKeys.includes(field.key),
+    visibleFieldKeys.includes(field.key) || ["wavelength","current","activationTime"].includes(field.key) && files.some(file=>file.metadata[field.key].trim()),
   );
 
   const fileStats = useMemo(
@@ -120,7 +120,7 @@ export function MetadataTable({
             onInferFilenameMetadata();
             if (files.some(file =>
               (!selectedIds.size || selectedIds.has(file.id)) &&
-              inferMetadataFromFilename(file.filename).activationTime,
+              fillBlankMetadataFromSources(file).activationTime,
             )) {
               setVisibleFieldKeys(fields => fields.includes("activationTime")
                 ? fields : [...fields, "activationTime"]);

@@ -1,4 +1,4 @@
-import type { SpectrumMetadata } from "../types";
+import type { SpectrumMetadata, SpectrumFile } from "../types";
 
 const stripKnownExtensions = (filename: string): string =>
   filename.replace(/(\.(txt|raw|mzml|csv|dat|asc))+$/i, "");
@@ -66,7 +66,8 @@ export const inferMetadataFromFilename = (
     inferred.activationTime = formatTime(activationMatch[1], activationMatch[2]);
   }
 
-  const wavelengthMatch = baseName.match(/(\d+(?:[p.]\d+)?)\s*nm\b/i);
+  const wavelengthMatch = baseName.match(/(?:^|[_\s-])(\d+(?:[p.]\d+)?)\s*nm(?=$|[_\s.-])/i)
+    ?? baseName.match(/(?:^|_)(280|365)LED_?(?:ON|OFF)(?:_|$)/i);
   if (wavelengthMatch) {
     inferred.wavelength = `${normalizeNumber(wavelengthMatch[1])} nm`;
   }
@@ -92,6 +93,25 @@ export const inferMetadataFromFilename = (
 
   return inferred;
 };
+
+// Editable metadata uses explicit catalog values first; immutable source snapshots
+// and user-entered values are preserved. Filename inference fills remaining gaps.
+export function fillBlankMetadataFromSources(file: SpectrumFile): SpectrumMetadata {
+  const source=file.catalog?.input.experiment.metadata;
+  const inferred=inferMetadataFromFilename(file.filename);
+  const value=(key:string)=>source?.[key];
+  const numeric=(key:string)=>typeof value(key)==="number" && Number.isFinite(value(key)) ? String(value(key)) : "";
+  const led=typeof value("led")==="string" ? String(value("led")).toLowerCase() : "";
+  const known:Partial<SpectrumMetadata>={};
+  if(numeric("wavelength")) known.wavelength=`${numeric("wavelength")} nm`;
+  if(numeric("ledCurrent")) known.current=numeric("ledCurrent");
+  if(led==="on" || led==="off") known.condition=`LED ${led.toUpperCase()}`;
+  const exposure=numeric("exposureSetting") || numeric("irradiationTime");
+  if(exposure) known.activationTime=`${exposure} s`;
+  if(numeric("precursor")) known.parentIon=numeric("precursor");
+  if(numeric("concentration") && typeof value("concentrationUnit")==="string") known.concentration=`${numeric("concentration")} ${value("concentrationUnit")}`;
+  return {...file.metadata,...Object.fromEntries(Object.entries({...inferred,...known}).filter(([key])=>!file.metadata[key as keyof SpectrumMetadata].trim()))};
+}
 
 export const fillBlankMetadataFromFilename = (
   metadata: SpectrumMetadata,

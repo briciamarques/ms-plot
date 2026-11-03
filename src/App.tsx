@@ -17,7 +17,7 @@ import { calibratedFiles } from "./utils/powerCalibration";
 import { withSavedPowerCalibration } from "./utils/savedPowerCalibration";
 import { createEmptyProject, createProjectSnapshot, parseProjectSnapshot, safeProjectFilename } from "./utils/project";
 import { downloadTextFile } from "./utils/csv";
-import { fillBlankMetadataFromFilename, inferMetadataFromFilename } from "./utils/filenameMetadata";
+import { fillBlankMetadataFromSources, inferMetadataFromFilename } from "./utils/filenameMetadata";
 import { suggestIonTargets } from "./utils/ionSuggestions";
 import { numericTargets } from "./utils/ions";
 import { readTxt } from "./utils/readTxt";
@@ -187,7 +187,7 @@ function App() {
             onToggleFile={(id, checked) => patch({selectedFileIds: checked ? [...selectedIds, id] : [...selectedIds].filter(value => value !== id)}, "selection")}
             onToggleAll={checked => patch({selectedFileIds: checked ? files.map(file => file.id) : []})}
             onPlotSelectedOnlyChange={value => patch({plotSelectedOnly: value})}
-            onInferFilenameMetadata={() => patch({files: files.map(file => !selectedIds.size || selectedIds.has(file.id) ? {...file, metadata: fillBlankMetadataFromFilename(file.metadata, file.filename)} : file)})}
+            onInferFilenameMetadata={() => patch({files: files.map(file => !selectedIds.size || selectedIds.has(file.id) ? {...file, metadata: fillBlankMetadataFromSources(file)} : file)})}
             onUpdateMetadata={updateMetadata} onApplyBulkMetadata={(field, value) => patch({files: files.map(file => selectedIds.has(file.id) ? {...file, metadata: {...file.metadata, [field]: value}} : file)})}
             onRemoveSelected={() => patch({files: files.filter(file => !selectedIds.has(file.id)), selectedFileIds: []})} />}
         </div>

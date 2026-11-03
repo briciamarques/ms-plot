@@ -17,6 +17,8 @@ export function SavedPowerControls({calibration, onChange}: {
     <div className="plot-accordion-content">
       <p>As medições ficam salvas no site. Para usá-las, escolha <strong>x axis → Optical power</strong> e preencha corrente e wavelength nos espectros.</p>
       <label className="checkbox-label"><input type="checkbox" checked={calibration.enabled} onChange={e => onChange({...calibration, enabled: e.target.checked})} />Usar calibração salva neste projeto</label>
+      <label className="checkbox-label"><input type="checkbox" checked={calibration.interpolate} onChange={e => onChange({...calibration, interpolate: e.target.checked})} />Interpolar correntes intermediárias (estimativa linear, sem extrapolar)</label>
+      <p className="help-text">A potência é uma estimativa pela calibração salva. Confira se o alinhamento e a geometria das medições correspondem ao experimento.</p>
       <p className="help-text">{calibration.automaticWavelength ? "O wavelength de cada espectro seleciona sua calibração automaticamente." : `Este projeto usa a calibração de ${calibration.wavelengthNm} nm.`} {profile.subtractBackground ? `Background ${profile.backgroundSource === "final" ? "final" : profile.backgroundSource === "both" ? "inicial + final" : "inicial"} subtraído.` : "Potência bruta."}</p>
       <label className="saved-power-select">Ver medições<select value={wavelength} onChange={e => setView(Number(e.target.value))}>{wavelengths.map(w => <option key={w} value={w}>{w} nm</option>)}</select></label>
       <p className="help-text">Leituras de {profile.intervalSeconds} s · {summary.points.length} correntes medidas. {calibration.interpolate ? "Interpolação linear ativada." : "Somente correntes medidas, sem interpolação."}</p>

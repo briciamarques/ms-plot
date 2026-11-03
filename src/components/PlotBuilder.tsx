@@ -1,6 +1,6 @@
 import { exportCatalogResult, downloadPackage } from "../utils/catalogProject";
 import { PhotodepletionControls } from "./PhotodepletionControls";
-import { analyzePhoto, photoCsv, photoTraces, readPhotoState } from "../utils/photodepletion";
+import { analyzePhoto, photoCsv, photoTraces, readPhotoState, preparePhotoPairs } from "../utils/photodepletion";
 import Plotly from "plotly.js-dist-min";
 import { Download, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -36,7 +36,10 @@ import { readPlotSetting, type PlotBuilderProps, type PlotTab, type PlotInteract
 export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isActive = true, expanded, onExpandedChange, initialSettings = {}, settingsRef, onSettingsChange, projectName, files, photoFiles = files, processingBusy = false, powerCalibration, onPowerCalibrationChange }: PlotBuilderProps) {
   const [analysisMode, setAnalysisMode] = useState(() => initialSettings.analysisMode === "photodepletion" ? "photodepletion" : "intensity");
   const isPhoto = analysisMode === "photodepletion";
-  const [photo, setPhoto] = useState(() => readPhotoState(initialSettings.photodepletion));
+  const [photo, setPhoto] = useState(() => {
+    const state=readPhotoState(initialSettings.photodepletion);
+    return initialSettings.analysisMode === "photodepletion" && !state.pairs.length ? {...state,pairs:preparePhotoPairs(photoFiles,powerCalibration)} : state;
+  });
   const photoAnalysis = useMemo(() => analyzePhoto(photo, photoFiles), [photo, photoFiles]);
   const [collapsed, setCollapsed] = useState(false);
   const [previewZoom, setPreviewZoom] = useState("fit");
@@ -999,11 +1002,11 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
             </button>
           </div>
 
-          <label className="analysis-mode-control">Modo de análise<select aria-label="Modo de análise" value={analysisMode} onChange={event => setAnalysisMode(event.target.value)}><option value="intensity">Ion intensity</option><option value="photodepletion">Photodepletion</option></select></label>
+          <label className="analysis-mode-control">Modo de análise<select aria-label="Modo de análise" value={analysisMode} onChange={event => {setAnalysisMode(event.target.value); if(event.target.value === "photodepletion" && !photo.pairs.length) setPhoto({...photo,pairs:preparePhotoPairs(photoFiles,powerCalibration)});}}><option value="intensity">Ion intensity</option><option value="photodepletion">Photodepletion</option></select></label>
           <FitResults traces={isPhoto || processingBusy ? [] : plotData} filename={safeProjectFilename(projectName).replace(".pdmsplot.json", "")} />
           {activeTab === "data" ? (
             <div className="plot-menu">
-            {isPhoto && <PhotodepletionControls state={photo} onChange={setPhoto} analysis={photoAnalysis} files={photoFiles} calibration={powerCalibration} />}
+            {isPhoto && <PhotodepletionControls state={photo} onChange={setPhoto} analysis={photoAnalysis} files={photoFiles} calibration={powerCalibration} onCalibrationChange={onPowerCalibrationChange} />}
             {!isPhoto && replicateMode !== "individual" && <p role="status">This saved project uses legacy replicate settings. Choose a mode in Error bars to switch to the editable acquisition groups.</p>}
             {!isPhoto && <ErrorBarControls files={files} settings={errorBars} onChange={next=>{setReplicateMode("individual");setErrorBars(next);}} warnings={aggregation.warnings} pointCount={rows.length} />}
             <details hidden={isPhoto} className="plot-control-group plot-accordion">

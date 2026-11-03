@@ -10,6 +10,7 @@ import { canonical, verifyReceipt } from "./catalogExchangeCore";
 import { readErrorBars } from "./errorBars";
 import { plotAxisValue } from "./format";
 import { plotYValue, type XAxisKey } from "../types";
+import { fillBlankMetadataFromSources } from "./filenameMetadata";
 
 const parseCatalogTxt = (text: string) => parseSpectrumTxt(text.replace(/[;,]/g, "\t"));
 const uuid = () => crypto.randomUUID();
@@ -48,11 +49,12 @@ export async function importCatalogPackage(bytes: Uint8Array): Promise<CatalogPr
     const bytes = entries[descriptor.path];
     const parsed = parseCatalogTxt(decoder.decode(bytes));
     if (!parsed.peaks.length || parsed.invalidLineCount) throw Error(`${descriptor.name}: TXT não contém exclusivamente linhas numéricas válidas. Revise a fonte no catálogo.`);
-    return {id: input.inputId, filename: descriptor.name, fingerprint: input.storedTxt.sha256, metadata: {...emptyMetadata(), compound: input.molecule.name, experiment: input.experiment.name, notes: `MS Catalog · ${input.spectrum.name} · ${input.inputId}`}, ...parsed,
+    const file = {id: input.inputId, filename: descriptor.name, fingerprint: input.storedTxt.sha256, metadata: {...emptyMetadata(), compound: input.molecule.name, experiment: input.experiment.name, notes: `MS Catalog · ${input.spectrum.name} · ${input.inputId}`}, ...parsed,
       catalog: {input: structuredClone(input), txtBase64: encodeBase64(bytes)}} satisfies SpectrumFile;
+    return {...file,metadata:fillBlankMetadataFromSources(file)};
   });
   const project: ProjectSnapshot = {...createEmptyProject(), projectName: manifest.catalog.study.name, files, selectedFileIds: files.map(f => f.id), ions: [{id: uuid(), targetMz: "457", label: "precursor"}], ionDraft: "457 precursor", catalog: {selection: manifest, selectionManifest: manifestText}};
-  // No filename-derived pairing, power, normalization or Photodepletion mode.
+  // Metadata only: no automatic pairing, normalization or Photodepletion mode.
   return {manifest, project};
 }
 

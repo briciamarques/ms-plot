@@ -5,6 +5,7 @@ import { calibratedFiles, type PowerCalibration } from "./powerCalibration";
 import { escapeCsvValue } from "./csv";
 import type { PlotTrace } from "./plot";
 import { paletteColor, type ColorPaletteId } from "./colorPalettes";
+import { fillBlankMetadataFromSources } from "./filenameMetadata";
 
 export const photoFields = ["condition", "replicate", "wavelength_nm", "time", "current", "power", "off", "on", "off_time", "instrument", "geometry", "off_id", "on_id", "off_file", "on_file", "scale", "exclude_reason"] as const;
 export type PhotoField = typeof photoFields[number];
@@ -13,6 +14,33 @@ export type PhotoState = { pairs: PhotoPair[]; precursor: number; tolerance: num
 export const defaultPhotoState = (): PhotoState => ({pairs: [], precursor: 457, tolerance: 0.5, unit: "mW", means: true, fit: true, fitMeans: true, origin: false, min: "", max: "", labels: {}, xMin: "", xMax: "", yMin: "", yMax: ""});
 export const newPhotoPair = (calibration?: PowerCalibration): PhotoPair => ({...Object.fromEntries(photoFields.map(key => [key, ""])), id: crypto.randomUUID(), scale: "unknown",
   ...(calibration?.enabled ? {calibration: structuredClone(calibration)} : {})} as PhotoPair);
+
+// Preparing rows does not claim an OFF association or comparable intensity scale.
+export function preparePhotoPairs(files: SpectrumFile[], calibration?: PowerCalibration, existing: PhotoPair[] = []): PhotoPair[] {
+  const used=new Set(existing.map(pair=>pair.on_file));
+  return files.flatMap(file=>{
+    const metadata=fillBlankMetadataFromSources(file);
+    if(metadata.condition.toUpperCase()!=="LED ON" || used.has(file.id)) return [];
+    const setup=catalogSetup(file);
+    return [{...newPhotoPair(calibration),on_file:file.id,on_id:file.catalog?.input.rawSource?.sha256 || file.id,
+      condition:`${metadata.wavelength || "? nm"} · ${metadata.current || "?"} mA`,
+      replicate:metadata.replicate,wavelength_nm:metadata.wavelength.replace(/\s*nm$/i,""),
+      current:metadata.current ? /[a-z]/i.test(metadata.current) ? metadata.current : `${metadata.current} mA` : "",
+      time:metadata.activationTime,instrument:setup.instrument,geometry:setup.geometry,
+    }];
+  });
+}
+
+export function compatiblePhotoControl(pair: PhotoPair, offFile: SpectrumFile, files: SpectrumFile[]): boolean {
+  const metadata=fillBlankMetadataFromSources(offFile), onFile=files.find(file=>file.id===pair.on_file);
+  if(metadata.condition.toUpperCase()!=="LED OFF" || pair.on_file===offFile.id) return false;
+  if(!metadata.wavelength || Number(metadata.wavelength.replace(/\s*nm$/i,""))!==Number(pair.wavelength_nm)) return false;
+  if(!metadata.activationTime || quantity(metadata.activationTime,"time")!==quantity(pair.time,"time")) return false;
+  const off=catalogSetup(offFile),on=catalogSetup(onFile);
+  if(["instrument","geometry","setup"].some(key=>off[key as keyof typeof off] && on[key as keyof typeof on] && off[key as keyof typeof off]!==on[key as keyof typeof on])) return false;
+  const a=offFile.catalog?.input.experiment.metadata,b=onFile?.catalog?.input.experiment.metadata;
+  return !["alignmentStatus","solvent","concentration","concentrationUnit","precursor"].some(key=>a?.[key]!=null && b?.[key]!=null && a[key]!==b[key]);
+}
 // A scale review belongs to the selected sources, not to the row position.
 export function changePhotoSource(pair: PhotoPair, side: "off" | "on", fileId: string): PhotoPair {
   return pair[`${side}_file`] === fileId ? pair : {...pair, [`${side}_file`]: fileId, scale: "unknown", scaleReview: ""};

@@ -21,7 +21,7 @@ export function CatalogExchange({project, onOpen}: {project: ProjectSnapshot; on
       <h3>{preview.manifest.catalog.study.name}</h3>
       <p>{preview.manifest.kind === "selection" ? "Nova seleção" : "Reabrir versão editável"} · {preview.project.files.length} TXT · estudo {preview.manifest.catalog.study.id}</p>
       <SourceList project={preview.project} />
-      <button type="button" className="primary-button" onClick={() => {onOpen(preview.project); setPreview(undefined); setStatus("Pacote aberto. Undo recupera o projeto anterior. Revise metadados e selecione os pares explicitamente.");}}>Abrir este projeto após revisar</button>
+      <button type="button" className="primary-button" onClick={() => {onOpen(preview.project); setPreview(undefined); setStatus("Pacote aberto com os metadados disponíveis. Undo recupera o projeto anterior. Em Photodepletion, confira as linhas ON e associe o controle OFF.");}}>Abrir este projeto após revisar</button>
       <button type="button" className="secondary-button" onClick={() => {setPreview(undefined); setStatus("Revisão cancelada; projeto atual preservado.");}}>Cancelar</button>
       <p>Abrir troca o projeto em edição. Nenhum arquivo será enviado à conta do catálogo por esta ação.</p>
     </div>}

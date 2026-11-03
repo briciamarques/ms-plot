@@ -26,7 +26,9 @@ for (const [width,height] of [[1000,1000],[16000,9000],[9000,16000],[2400,1800]]
 }
 const meta=inferMetadataFromFilename('9-FMN_20uM_457mz_act_1s_365LED_ON_set_50mA_2.raw');
 assert.equal(meta.compound,'FMN'); assert.equal(meta.concentration,'20 uM'); assert.equal(meta.parentIon,'457');
-assert.equal(meta.activationTime,'1 s'); assert.equal(meta.acqTime,undefined); assert.equal(meta.current,'50'); assert.equal(meta.condition,'LED ON'); assert.equal(meta.replicate,'2'); assert.equal(meta.wavelength,undefined);
+assert.equal(meta.activationTime,'1 s'); assert.equal(meta.acqTime,undefined); assert.equal(meta.current,'50'); assert.equal(meta.condition,'LED ON'); assert.equal(meta.replicate,'2'); assert.equal(meta.wavelength,'365 nm');
+assert.equal(inferMetadataFromFilename('FMN_280nm_LED_ON_100mA_1.txt').wavelength,'280 nm');
+assert.equal(inferMetadataFromFilename('FMN_123LED_ON_1.txt').wavelength,undefined);
 assert.equal(inferMetadataFromFilename('FMN_365LED_OFF_4.raw').current,undefined);
 assert.equal(inferMetadataFromFilename('FMN_365LED_ON_set_500uA_4.raw').current,'0.5');
 assert.equal(inferMetadataFromFilename('FMN_365LED_ON_set_2500mV_4.raw').voltage,'2.5');
