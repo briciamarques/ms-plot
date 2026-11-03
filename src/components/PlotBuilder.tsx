@@ -9,6 +9,8 @@ import { xAxisOptions, yModeOptions } from "../types";
 import { downloadTextFile, plotRowsToCsv } from "../utils/csv";
 import { queuePlotTask } from "../utils/plotLifecycle";
 import { aggregateReplicates, type ReplicateMode } from "../utils/replicates";
+import { readErrorBars, summarizeErrorBars } from "../utils/errorBars";
+import { ErrorBarControls } from "./ErrorBarControls";
 import { fitExportPreview } from "../utils/preview";
 import { axisRange, axisRangeLayout, numericBounds } from "../utils/axisRange";
 import {
@@ -52,7 +54,8 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
   const axisRows = useMemo(() => rowsForPlotAxis(sourceRows, xAxis), [sourceRows, xAxis]);
   const [yMode, setYMode] = useState<YMode>(() => readPlotSetting(initialSettings, "yMode", "absolute"));
   const [replicateMode, setReplicateMode] = useState<ReplicateMode>(() => ["sd", "sem"].includes(String(initialSettings.replicateMode)) ? initialSettings.replicateMode as ReplicateMode : "individual");
-  const aggregation = useMemo(() => replicateMode === "individual" ? { rows: axisRows, warnings: [] } : aggregateReplicates(axisRows, xAxis, yMode), [axisRows, xAxis, yMode, replicateMode]);
+  const [errorBars,setErrorBars] = useState(()=>readErrorBars(initialSettings.errorBars));
+  const aggregation = useMemo(() => replicateMode === "individual" ? summarizeErrorBars(axisRows,files,xAxis,yMode,errorBars) : aggregateReplicates(axisRows, xAxis, yMode), [axisRows, files, xAxis, yMode, replicateMode, errorBars]);
   const rows = aggregation.rows;
   const repeatedX = useMemo(() => hasRepeatedPlotCoordinates(rows, xAxis), [rows, xAxis]);
   const omittedAxisFiles = useMemo(() => {
@@ -126,7 +129,7 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
   const [previewAreaWidth, setPreviewAreaWidth] = useState(0);
   const [previewAreaHeight, setPreviewAreaHeight] = useState(0);
 
-  useEffect(() => { settingsRef.current = { analysisMode, photodepletion: photo, xAxis, yMode, replicateMode, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, legendMzDecimals, highlightOnClick, highlightedIonId, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors, colorPalette }; const signature = JSON.stringify(settingsRef.current); if (settingsInitialized.current !== null && settingsInitialized.current !== signature) onSettingsChange(settingsRef.current); settingsInitialized.current = signature; });
+  useEffect(() => { settingsRef.current = { analysisMode, photodepletion: photo, xAxis, yMode, replicateMode, errorBars, title, showTitle, xTitle, xUnit, yTitle, yUnit, xValueScale, xValueMultiplier, xTickFormat, yTickFormat, xMin, xMax, yMin, yMax, showLegend, legendPosition, legendColumns, legendMzDecimals, highlightOnClick, highlightedIonId, legendInsideX, legendInsideY, forceSingleLegend, xZoomOnly, fontFamily, titleSize, axisTitleSize, tickSize, legendSize, showGrid, showAxisBox, axisLineWidth, lineWidth, markerSize, lineShape, curveMode, polynomialDegree, movingAverageWindow, previewExportRatio, plotHeight, exportWidth, exportHeight, journalPreset, figureContent, rasterDpi, finalWidthMm, axisColor, gridColor, plotBackground, paperBackground, traceColors, colorPalette }; const signature = JSON.stringify(settingsRef.current); if (settingsInitialized.current !== null && settingsInitialized.current !== signature) onSettingsChange(settingsRef.current); settingsInitialized.current = signature; });
 
   const shouldShowLegend =
     showLegend && (isPhoto || forceSingleLegend || new Set(rows.map((row) => row.ionId)).size > 1);
@@ -1001,16 +1004,17 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
           {activeTab === "data" ? (
             <div className="plot-menu">
             {isPhoto && <PhotodepletionControls state={photo} onChange={setPhoto} analysis={photoAnalysis} files={photoFiles} calibration={powerCalibration} />}
+            {!isPhoto && replicateMode !== "individual" && <p role="status">This saved project uses legacy replicate settings. Choose a mode in Error bars to switch to the editable acquisition groups.</p>}
+            {!isPhoto && <ErrorBarControls files={files} settings={errorBars} onChange={next=>{setReplicateMode("individual");setErrorBars(next);}} warnings={aggregation.warnings} pointCount={rows.length} />}
             <details hidden={isPhoto} className="plot-control-group plot-accordion">
               <summary>Text and axes</summary>
             <div className="plot-accordion-content">
-              <label><span>Replicates</span><select aria-label="Replicates" value={replicateMode} onChange={event => setReplicateMode(event.target.value as ReplicateMode)}>
+              {replicateMode !== "individual" && <label><span>Legacy replicate calculation</span><select aria-label="Replicates" value={replicateMode} onChange={event => setReplicateMode(event.target.value as ReplicateMode)}>
                 <option value="individual">Individual files</option><option value="sd">Mean ± sample SD</option><option value="sem">Mean ± SEM</option>
-              </select></label>
+              </select></label>}
               {replicateMode !== "individual" && <p>Equal weight per file. Normalization is applied per file before averaging. Groups match the other metadata and spectrum type; edit Experiment group to separate batches. Missing or repeated replicate IDs are not pooled.</p>}
               {repeatedX && (curveMode === "connect" || curveMode === "movingAverage") && <p role="status">Multiple files share the same x value. They are shown as individual points, without connecting or smoothing repetitions. For independent replicates, fill Replicate and Experiment group, then choose Mean ± sample SD.</p>}
               {isTimeAxis(xAxis) && <p>Explicit time units are converted before plotting. Unitless values use {xAxis === "retentionTime" ? "seconds" : "milliseconds"}. {omittedAxisFiles > 0 ? `${omittedAxisFiles} files with missing or invalid times are omitted.` : ""}</p>}
-              {aggregation.warnings.length > 0 && <details open><summary>Replicate warnings ({aggregation.warnings.length})</summary>{aggregation.warnings.map(warning => <p key={warning}>{warning}</p>)}</details>}
               {(xAxis === "current" || xAxis === "voltage") && omittedAxisFiles > 0 && <p role="status">{omittedAxisFiles} files without a numeric {xAxis} are omitted. LED OFF stays in Data; assign a reference coordinate explicitly if you want to plot it.</p>}
               {xAxis === "opticalPower" && <p role="status">Optical power uses the saved measurements. {omittedAxisFiles > 0 ? `${omittedAxisFiles} files without matching calibration are omitted; check their current and wavelength.` : "Values use the active calibration and background choice."} Vertical error bars describe ion intensity, not power uncertainty.</p>}
               {xAxis === "opticalPower" && <details><summary>Power calibration used</summary>{[...new Set(axisRows.map(row => row.metadata.powerCalibration).filter(Boolean))].map(method => <p key={method}>{method}</p>)}</details>}

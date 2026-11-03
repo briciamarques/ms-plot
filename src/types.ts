@@ -109,7 +109,7 @@ export type ProcessedRow = {
   acquisitionKey?: string;
   catalogAcquisition?: string;
   thermoScanSelections?: ThermoScanSelection[];
-  statistics?: { n: number; sd: number | null; sem: number | null; files: string[]; fileIds?: string[] };
+  statistics?: { n: number; sd: number | null; sem: number | null; files: string[]; fileIds?: string[]; basis?: "between-acquisitions" | "between-experimental-units"; errorType?: "sd" | "sem"; sourceCount?: number; unitIds?: string[]; observations?: Array<{fileId:string;acquisitionId:string;unitId:string|null;y:number;absoluteIntensity:number;normalizationFactor:number|null}> };
 };
 
 export type XAxisKey =

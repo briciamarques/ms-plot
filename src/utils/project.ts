@@ -55,6 +55,12 @@ export function validateProjectSnapshot(value: unknown): ProjectSnapshot {
   const settings = value.plotSettings;
   if (settings !== undefined) {
     requireValue(record(settings), "invalid plot settings");
+    if (settings.errorBars !== undefined) {
+      const bars=settings.errorBars;
+      requireValue(record(bars) && bars.version===1 && ["individual","acquisition-sd","unit-sem"].includes(String(bars.mode)) && record(bars.files), "invalid error bar settings");
+      requireValue(record(bars.independence) && typeof bars.independence.confirmed==="boolean" && typeof bars.independence.reason==="string" && typeof bars.independence.at==="string", "invalid error bar independence review");
+      for(const choice of Object.values(bars.files)) requireValue(record(choice) && typeof choice.included==="boolean" && ["group","unit","reason"].every(key=>typeof choice[key]==="string"), "invalid error bar file choice");
+    }
     if (settings.analysisMode !== undefined) requireValue(["intensity", "photodepletion"].includes(String(settings.analysisMode)), "invalid analysis mode");
     if (settings.photodepletion !== undefined) {
       const photo = settings.photodepletion;

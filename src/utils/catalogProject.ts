@@ -7,6 +7,9 @@ import { analyzePhoto, readPhotoState, photoCsv } from "./photodepletion";
 import { escapeCsvValue } from "./csv";
 import { readExchange, writeExchange, sha256, encodeBase64, decodeBase64 } from "./catalogCodec";
 import { canonical, verifyReceipt } from "./catalogExchangeCore";
+import { readErrorBars, errorBarFile } from "./errorBars";
+import { plotAxisValue } from "./format";
+import { plotYValue, type XAxisKey } from "../types";
 
 const parseCatalogTxt = (text: string) => parseSpectrumTxt(text.replace(/[;,]/g, "\t"));
 const uuid = () => crypto.randomUUID();
@@ -73,6 +76,9 @@ export async function exportCatalogResult(source: ProjectSnapshot, png: Uint8Arr
   const project = structuredClone(source);
   const context = project.catalog!;
   const photoMode = project.plotSettings?.analysisMode === "photodepletion";
+  const barSettings=readErrorBars(project.plotSettings?.errorBars);
+  const exclusions = photoMode ? [] : source.files.filter(file=>!errorBarFile(file,barSettings).included).map(file=>({inputId:file.catalog?.input.inputId ?? file.id,name:file.filename,reason:errorBarFile(file,barSettings).reason}));
+  if(exclusions.some(item=>!item.reason.trim())) throw Error("Add a reason for each excluded file before exporting the result to MS Catalog.");
   const photo = readPhotoState(project.plotSettings?.photodepletion);
   const analysis = analyzePhoto(photo, project.files);
   const ids = photoMode ? unique(photo.pairs.flatMap(p => [p.off_file, p.on_file])) : unique(displayedRows.flatMap(r => r.statistics?.fileIds ?? [r.fileId]));
@@ -101,6 +107,26 @@ export async function exportCatalogResult(source: ProjectSnapshot, png: Uint8Arr
     .map(s => {const seriesId = uuid(); seriesMap.set(s.key, seriesId); return {seriesId, label: s.label || "Íon", inputIds: s.inputIds, transformationIds: [transformationId]};});
   const lineage = photoMode ? analysis.results.map(r => [seriesMap.get(r.series)!, JSON.stringify(unique([inputByFile.get(r.pair.off_file), inputByFile.get(r.pair.on_file)]))])
     : displayedRows.map(r => [seriesMap.get(JSON.stringify([r.ionId, r.seriesId ?? ""]))!, JSON.stringify((r.statistics?.fileIds ?? [r.fileId]).map(id => inputByFile.get(id)))]);
+  const barAxis=(project.plotSettings?.xAxis ?? "acqTime") as XAxisKey;
+  const barMultiplier=Number(project.plotSettings?.xValueMultiplier ?? 1);
+  const hasSem=displayedRows.some(row=>row.statistics?.errorType==="sem");
+  const errorBars = !photoMode && project.plotSettings?.errorBars ? {
+    schemaVersion:1,basis:"between-acquisitions",statistic:hasSem ? "sem" : displayedRows.some(row=>row.statistics?.errorType==="sd") ? "sample-sd" : "none",
+    requestedMode:barSettings.mode,weighting:hasSem ? "equal-experimental-unit-after-within-unit-mean" : "equal-acquisition",
+    independence:hasSem ? "reviewed" : "unreviewed",singleValuePolicy:"null",
+    axis:{field:barAxis,unit:String(project.plotSettings.xUnit ?? ""),multiplier:barMultiplier},
+    extraction:{method:"maximum within target m/z window of each acquisition-average TXT",targets:project.ions,halfWindowMz:project.tolerance,unit:"m/z"},
+    normalization:{mode:project.plotSettings.yMode ?? "absolute",stage:"per-file before aggregation",reference:"Original per-file plotted values; factors and source values recorded in each group. No scan SD is reused."},
+    groups:displayedRows.map((row,index)=>({groupId:`point-${index+1}`,seriesId:seriesMap.get(JSON.stringify([row.ionId,row.seriesId ?? ""])),label:row.metadata.experiment,x:plotAxisValue(row.metadata[barAxis],barAxis,barMultiplier),
+      targetMz:row.targetMz,inputIds:(row.statistics?.fileIds ?? [row.fileId]).map(id=>inputByFile.get(id)),
+      criteria:"Same edited group, physical x, ion, recorded conditions and intensity scale; one average per acquisition",
+      n:row.statistics?.n ?? 1,countingUnit:row.statistics?.basis === "between-experimental-units" ? "experimental-unit" : "acquisition",
+      center:plotYValue(row,project.plotSettings?.yMode === "relative" ? "relative" : project.plotSettings?.yMode === "selectedSum" ? "selectedSum" : "absolute"),
+      statistic:row.statistics?.errorType ?? "none",value:row.statistics?.errorType ? row.statistics[row.statistics.errorType] : null,
+      observations:row.statistics?.observations?.map(({fileId,...observation})=>({...observation,inputId:inputByFile.get(fileId)})) ?? [],
+    })),exclusions,
+    review:hasSem ? {reviewer:"local-user",at:barSettings.independence.at,reason:barSettings.independence.reason} : null,
+  } : undefined;
   const table = addLineage(photoMode ? photoCsv(analysis, photo) : csv, lineage, photoMode ? photo.unit : null);
   const add = async (role: FileDescriptor["role"], name: string, mime: string, bytes: Uint8Array) => {
     const id = uuid(), path = `${role === "project" ? "project" : "outputs"}/${id}.${name.split(".").pop()}`;
@@ -111,12 +137,14 @@ export async function exportCatalogResult(source: ProjectSnapshot, png: Uint8Arr
   const projectId = await add("project", "analysis.pdmsplot.json", "application/json", encoder.encode(JSON.stringify(project)));
   const limitations = ["Pacote local; importar e revisar no estudo do catálogo para salvar. Não enviado automaticamente.", "Revisões e independência experimental devem ser verificadas pelo pesquisador."];
   if (inputs.some(i => i.intensity.state !== "original")) limitations.push("Há TXT com escala original desconhecida ou transformada; consulte a revisão de comparabilidade de cada par.");
+  if(errorBars) limitations.push("SD describes dispersion between acquisitions; it does not establish experimental independence. SEM uses explicitly reviewed experimental units. No scan variability is substituted.");
+  if(exclusions.length) limitations.push("Excluded input IDs and reasons are retained in the error-bar recipe. Reimport the original selection ZIP to restore excluded TXT files.");
   const result: ResultPackage = {
     format: "ms-analysis-exchange", schemaVersion: "1.0.0", kind: "result", packageId: uuid(), createdAt: now, producer: {app: "ms-plot", version: APP_VERSION}, catalog: context.selection.catalog, requiredFeatures: [], inputs, files, extensions: structuredClone(context.envelopeExtensions ?? context.selection.extensions),
     selectionReceipt: {packageId: context.selection.packageId, manifestSha256: await sha256(encoder.encode(context.selectionManifest))},
     result: {resultId: context.resultId, versionId: context.versionId, previousVersionId, derivedFrom: null, title: project.projectName, analysisType: photoMode ? "photodepletion" : "other", editor: {app: "ms-plot", version: APP_VERSION}, status: "exploratory-unvalidated", usedInputIds,
-      method: {id: photoMode ? "ln-off-on-v1" : "ion-window-maximum-v1", version: "1", definition: photoMode ? "ln(I_OFF/I_ON); acquisition average TXT; log each pair before condition mean and sample SD; independent per-series OLS" : "Maximum intensity in target m/z window of each original TXT; figure transformations recorded in plotSettings", parameters: asJson({tolerance: project.tolerance, ions: project.ions, plotSettings: project.plotSettings, powerCalibration: project.powerCalibration})},
-      transformations: [{id: transformationId, order: 1, scope: "calculation", inputIds: usedInputIds, method: photoMode ? "precursor-window-maximum/log-pair/condition-mean-sample-SD/OLS" : "ion-window-maximum/plot-recipe", methodVersion: "1", parameters: asJson({plotSettings: project.plotSettings})}], series,
+      method: {id: photoMode ? "ln-off-on-v1" : "ion-window-maximum-v1", version: "1", definition: photoMode ? "ln(I_OFF/I_ON); acquisition average TXT; log each pair before condition mean and sample SD; independent per-series OLS" : "Maximum intensity in target m/z window of each original TXT; figure transformations recorded in plotSettings", parameters: asJson({tolerance: project.tolerance, ions: project.ions, plotSettings: project.plotSettings, powerCalibration: project.powerCalibration, errorBars})},
+      transformations: [{id: transformationId, order: 1, scope: "calculation", inputIds: usedInputIds, method: photoMode ? "precursor-window-maximum/log-pair/condition-mean-sample-SD/OLS" : "ion-window-maximum/plot-recipe", methodVersion: "1", parameters: asJson({plotSettings: project.plotSettings, errorBars})}], series,
       photodepletion: photoMode ? {pairs: analysis.results.map(r => ({pairId: r.pair.id, offInputId: inputByFile.get(r.pair.off_file)!, onInputId: inputByFile.get(r.pair.on_file)!, status: r.reasons.length ? "rejected" : "accepted", review: {reviewer: "local-user", at: now, reason: r.reasons.join("; ") || r.pair.scaleReview || "Explicit pair selection and comparable-scale declaration"}})), formula: "Math.log(I_OFF / I_ON)", extraction: {method: "maximum within m/z window of acquisition-average TXT", window: {precursorMz: photo.precursor, halfWindowMz: photo.tolerance}, unit: null}, independentAxis: {name: "measured optical power or explicitly associated calibration", unit: photo.unit}, invalidSignalPolicy: "Exclude missing/nonpositive OFF/ON with reasons; preserve negative logarithms; no epsilon substitution", experimentalUnit: "user-declared acquisition / experimental replicate; never individual scans", comparability: {status: "unreviewed", review: null, limitations: analysis.results.flatMap(r => [...r.reasons, ...r.warnings])}} : null,
       artifacts: {figureFileIds: [pngId], tables: [{fileId: csvId, delimiter: ",", encoding: "utf-8", header: true, missingValue: "", formulaSafety: "Text cells beginning with =,+,-,@,tab or CR are prefixed with apostrophe; finite numeric cells preserved.", columns: table.columns, lineageColumns: {seriesId: "catalog_series_id", inputIds: "catalog_input_ids"}}], project: {fileId: projectId, editor: "ms-plot", formatId: "pd-ms-plot-project", formatVersion: "1", datasetBindings: project.files.map(f => ({datasetId: f.id, inputIds: [f.catalog!.input.inputId]}))}}, limitations, extensions: structuredClone(context.resultExtensions ?? {})}
   };

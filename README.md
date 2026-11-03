@@ -15,6 +15,30 @@ by the current interface. The local launcher now serves only the editor.
 
 ## MS Catalog exchange v1
 
+In **Plot → Data → Error bars**, choose **Mean ± SD between acquisitions** to
+show descriptive spread with equal weight per acquisition. Replicate labels and
+an assertion of independence are not required for this descriptive SD. Suggested
+groups use the catalog's experiment group; the editor keeps incompatible recorded
+conditions and intensity scales separate. Review groups, inclusion and exclusion
+reasons under **Files, groups and exclusions**. Multiple averages of one RAW are
+not pooled. One observation has no error bar.
+
+**Mean ± SEM of independent units** requires experimental-unit IDs, an explicit
+independence review and its reason. Multiple acquisitions of one unit are averaged
+first, then units receive equal weight. The displayed n counts units. Scan
+statistics are not substituted: their target, extraction and estimator can differ
+from the peak height of an average TXT. Existing saved replicate calculations are
+retained until a mode is selected in the new panel.
+
+Choices are saved in the native project and exported as a versioned recipe in
+`result.method.parameters.errorBars` and the calculation transformation. CSV rows
+include the center, error value/type/basis, counts and contributing inputs. Source
+snapshots and the selection receipt remain immutable. A result ZIP carries only
+contributing TXT files, as required by the catalog's “Exact TXT used” definition;
+excluded IDs, names and reasons remain in the recipe. Reimport the original
+selection ZIP to restore excluded TXT files, or use the full native project saved
+before the result export. No new catalog export is needed to use these controls.
+
 In **Files & metadata → Pacotes do MS Catalog**, open a catalog selection ZIP and
 review the study, exact TXT IDs, RAW references, processing recipe and intensity
 state before opening. This replaces the workspace with an undoable project; it

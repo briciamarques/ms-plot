@@ -105,6 +105,7 @@ export const plotRowsToCsv = (
     "acquisition time (s)", "segment", "notes", "current (mA)", "voltage (V)", "concentration", "experiment group", "n replicates", "sample SD (plot y)", "SEM (plot y)", "source files",
     "optical power (mW)", "power calibration",
     "Thermo scan selection (JSON; positions within spectrum type)",
+    "error bar basis", "error bar statistic", "error bar value", "n acquisitions", "experimental unit IDs",
     ...(smoothed ? ["smoothing", "smoothed plot y value"] : []),
   ];
 
@@ -133,6 +134,8 @@ export const plotRowsToCsv = (
     row.statistics?.n ?? 1, row.statistics?.sd ?? null, row.statistics?.sem ?? null, row.statistics?.files.join("; ") ?? row.filename,
     row.metadata.opticalPower ?? "", row.metadata.powerCalibration ?? "",
     row.thermoScanSelections ? JSON.stringify(row.thermoScanSelections) : "",
+    row.statistics?.basis ?? "", row.statistics?.errorType ?? "", row.statistics?.errorType ? row.statistics[row.statistics.errorType] : null,
+    row.statistics?.sourceCount ?? row.statistics?.files.length ?? 1, row.statistics?.basis === "between-experimental-units" ? JSON.stringify(row.statistics.unitIds) : "",
     ...(smoothed ? [smoothed.has(row.id) ? `Centered moving average (${movingAverageWindow} points; symmetric shrinking endpoints)` : "Not applied: repeated x values", smoothed.get(row.id) ?? null] : []),
   ]);
 

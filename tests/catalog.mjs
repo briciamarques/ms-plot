@@ -6,7 +6,7 @@ import {pathToFileURL} from 'node:url';
 import ts from 'typescript';
 import {zipSync, unzipSync} from 'fflate';
 const output = path.resolve('node_modules/.tmp/photo-tests');
-for (const name of ['utils/catalogProject','utils/catalogCodec','utils/catalogExchangeCore','utils/parser','utils/replicates']) {
+for (const name of ['utils/catalogProject','utils/catalogCodec','utils/catalogExchangeCore','utils/parser','utils/replicates','utils/errorBars']) {
   const code = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {compilerOptions: {target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ES2020}}).outputText.replace(/from (["'])(\.[^"']+)\1/g, 'from "$2.mjs"');
   const target = path.join(output, `${name}.mjs`); fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target, code);
 }
@@ -82,3 +82,79 @@ assert.equal((await importCatalogPackage(ordinaryResult.bytes)).project.files.le
 const commonRows=rows.map(r=>({...r,metadata:{...r.metadata,current:'10'}}));
 assert.equal(aggregateReplicates(commonRows,'current','absolute').rows.length,0);
 console.log('PASS catalog: shared v1 fixture, exact TXT identities, checksums, unsafe ZIPs, source review, Photodepletion lineage, subset, project reopen and version ancestry');
+
+const {defaultErrorBars,errorBarFile,summarizeErrorBars}=await load('errorBars');
+const {buildPlotData}=await load('plot');
+const {emptyMetadata}=await import(pathToFileURL(path.join(output,'types.mjs')));
+const barFiles=[1,3,9].map((value,i)=>({id:`bar-${i}`,filename:`measurement-${i}.txt`,metadata:{...emptyMetadata(),activationTime:i===0?'1000 ms':'1 s',experiment:'group'},peaks:[{mz:100,intensity:value}],validLineCount:1,invalidLineCount:0,warnings:[]}));
+const barRows=processSpectra(barFiles,[{id:'ion',targetMz:100,label:''}],.5);
+const bars={...defaultErrorBars(),mode:'acquisition-sd'};
+const barSummary=summarizeErrorBars(barRows,barFiles,'activationTime','absolute',bars);
+assert.equal(barSummary.rows.length,1);
+assert.equal(barSummary.rows[0].statistics.n,3);
+assert.equal(barSummary.rows[0].absoluteIntensity,13/3);
+assert.ok(Math.abs(barSummary.rows[0].statistics.sd-Math.sqrt(52/3))<1e-12);
+assert.equal(barSummary.rows[0].statistics.sem,null);
+assert.equal(barSummary.rows[0].statistics.basis,'between-acquisitions');
+assert.equal(barSummary.rows[0].statistics.observations.length,3);
+const barTrace=buildPlotData(barSummary.rows,'activationTime','absolute',true,{colors:{},lineWidth:2,markerSize:5,lineShape:'linear',curveMode:'connect',polynomialDegree:3,replicateMode:'individual'})[0];
+assert.equal(barTrace.error_y.array[0],barSummary.rows[0].statistics.sd);
+assert.match(barTrace.text[0],/between-acquisitions/);
+assert.match(plotRowsToCsv(barSummary.rows,'activationTime','absolute'),/between-acquisitions,sd/);
+const one=summarizeErrorBars(barRows.slice(0,1),barFiles,'activationTime','absolute',bars);
+assert.equal(one.rows[0].statistics.sd,null);
+assert.ok(one.warnings.some(message=>message.includes('n=1')));
+const unitBars={...bars,mode:'unit-sem',independence:{confirmed:true,reason:'Two separately prepared experimental units.',at:'2026-11-03T19:00:00Z'},files:Object.fromEntries(barFiles.map((file,i)=>[file.id,{...errorBarFile(file,bars),unit:i<2?'A':'B'}]))};
+const unitSummary=summarizeErrorBars(barRows,barFiles,'activationTime','absolute',unitBars);
+assert.equal(unitSummary.rows[0].statistics.n,2);
+assert.equal(unitSummary.rows[0].statistics.sourceCount,3);
+assert.equal(unitSummary.rows[0].absoluteIntensity,5.5);
+assert.ok(Math.abs(unitSummary.rows[0].statistics.sem-3.5)<1e-12);
+assert.equal(summarizeErrorBars(barRows,barFiles,'activationTime','absolute',{...unitBars,independence:{...unitBars.independence,confirmed:false}}).rows.length,3);
+assert.ok(summarizeErrorBars(barRows,barFiles,'activationTime','absolute',{...unitBars,files:{}}).warnings.some(message=>message.includes('identify the experimental unit')));
+const excludedBars={...bars,files:{[barFiles[1].id]:{...errorBarFile(barFiles[1],bars),included:false,reason:'Excluded during source review'}}};
+const excludedSummary=summarizeErrorBars(barRows,barFiles,'activationTime','absolute',excludedBars);
+assert.equal(excludedSummary.rows[0].statistics.n,2);
+assert.equal(excludedSummary.rows[0].absoluteIntensity,5);
+const originalBarData=JSON.stringify(barFiles);
+summarizeErrorBars(barRows,barFiles,'activationTime','relative',unitBars);
+assert.equal(JSON.stringify(barFiles),originalBarData);
+
+// Catalog suggestion must use the shared group, never the unique experiment name.
+const barFixtureMembers=unzipSync(original);
+const barFixtureManifest=JSON.parse(new TextDecoder().decode(barFixtureMembers['manifest.json']));
+barFixtureManifest.inputs[2].rawSource.sha256='a'.repeat(64); // second synthetic acquisition
+barFixtureMembers['manifest.json']=new TextEncoder().encode(JSON.stringify(barFixtureManifest));
+const catalogBars=structuredClone((await importCatalogPackage(zipSync(barFixtureMembers))).project);
+catalogBars.files.forEach((file,i)=>{file.metadata.activationTime='1 s';file.metadata.condition='LED ON';file.metadata.experiment='reviewed group';});
+const catalogBarSettings={...bars,files:Object.fromEntries(catalogBars.files.map((file,i)=>[file.id,{...errorBarFile(file,bars),included:i!==1,reason:i===1?'Alternative average of the same RAW':''}]))};
+catalogBars.plotSettings={xAxis:'activationTime',xUnit:'s',xValueMultiplier:.001,yMode:'absolute',errorBars:catalogBarSettings};
+const sourceBarInputs=JSON.stringify(catalogBars.files.map(file=>file.catalog.input));
+const allBarRows=processSpectra(catalogBars.files,[{id:'ion',targetMz:100,label:''}],.5);
+const duplicateBarSummary=summarizeErrorBars(allBarRows,catalogBars.files,'activationTime','absolute',bars);
+assert.ok(duplicateBarSummary.warnings.some(message=>message.includes('same acquisition')));
+const catalogBarSummary=summarizeErrorBars(allBarRows,catalogBars.files,'activationTime','absolute',catalogBarSettings);
+assert.equal(catalogBarSummary.rows.length,1);
+assert.equal(catalogBarSummary.rows[0].statistics.n,2);
+const barExport=await exportCatalogResult(catalogBars,png,catalogBarSummary.rows,plotRowsToCsv(catalogBarSummary.rows,'activationTime','absolute',.001));
+assert.equal(barExport.manifest.inputs.length,2);
+assert.equal(barExport.manifest.result.method.parameters.errorBars.statistic,'sample-sd');
+assert.equal(barExport.manifest.result.method.parameters.errorBars.exclusions[0].inputId,catalogBars.files[1].catalog.input.inputId);
+assert.equal(barExport.manifest.result.method.parameters.errorBars.groups[0].inputIds.length,2);
+assert.equal(barExport.manifest.result.method.parameters.errorBars.groups[0].observations.length,2);
+assert.equal(barExport.manifest.result.transformations[0].parameters.errorBars.statistic,'sample-sd');
+assert.equal(JSON.stringify(catalogBars.files.map(file=>file.catalog.input)),sourceBarInputs);
+const barReopened=await importCatalogPackage(barExport.bytes);
+assert.deepEqual(barReopened.project.plotSettings.errorBars,catalogBarSettings);
+assert.equal(barReopened.project.files.length,2);
+const reopenedBars=summarizeErrorBars(processSpectra(barReopened.project.files,[{id:'ion',targetMz:100,label:''}],.5),barReopened.project.files,'activationTime','absolute',barReopened.project.plotSettings.errorBars);
+assert.equal(reopenedBars.rows[0].statistics.sd,catalogBarSummary.rows[0].statistics.sd);
+for(const invalidBars of [{}, {...bars,mode:'manual'}, {...bars,files:{bad:{included:'yes'}}}, {...bars,independence:null}]) assert.throws(()=>parseProjectSnapshot(JSON.stringify({...catalogBars,plotSettings:{errorBars:invalidBars}})),/error bar/);
+const missingReason=structuredClone(catalogBars);missingReason.plotSettings.errorBars.files[catalogBars.files[1].id].reason='';
+await assert.rejects(()=>exportCatalogResult(missingReason,png,catalogBarSummary.rows,''),/reason/);
+const suggestion=structuredClone(catalogBars.files[0]); suggestion.metadata.experiment=suggestion.catalog.input.experiment.name;suggestion.catalog.input.experiment.metadata.experimentGroup='Catalog series';
+assert.equal(errorBarFile(suggestion,bars).group,'Catalog series');
+const incompatible=structuredClone(catalogBars.files);incompatible[2].catalog.input.experiment.metadata.wavelength=365;
+const separated=summarizeErrorBars(processSpectra(incompatible,[{id:'ion',targetMz:100,label:''}],.5),incompatible,'activationTime','absolute',catalogBarSettings);
+assert.equal(separated.rows.length,2);
+console.log('PASS error bars: descriptive acquisition SD without replicate labels, unit-weighted SEM with review, exclusions, n=1, duplicate RAW guard, protected conditions, CSV, immutable sources and catalog round-trip.');

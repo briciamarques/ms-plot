@@ -630,10 +630,11 @@ export const buildPlotData = (
         plotYValue(row, yMode),
       );
       const name = traceName(firstRow.targetMz, firstRow.label, style.legendMzDecimals);
-      const errorBars = style.replicateMode && style.replicateMode !== "individual" ? {
-        error_y: { type: "data" as const, array: sortedRows.map(row => row.statistics?.[style.replicateMode === "sem" ? "sem" : "sd"] ?? null), visible: true, color, thickness: Math.max(1, style.lineWidth / 2), width: 4 },
+      const errorType = (row: ProcessedRow) => row.statistics?.errorType ?? (style.replicateMode === "sem" ? "sem" : "sd");
+      const errorBars = sortedRows.some(row=>row.statistics?.errorType) || (style.replicateMode && style.replicateMode !== "individual") ? {
+        error_y: { type: "data" as const, array: sortedRows.map(row => row.statistics?.[errorType(row)] ?? null), visible: true, color, thickness: Math.max(1, style.lineWidth / 2), width: 4 },
       } : {};
-      const pointText = sortedRows.map(row => row.statistics ? `${row.metadata.condition}; n=${row.statistics.n}; ${style.replicateMode?.toUpperCase()}=${row.statistics[style.replicateMode === "sem" ? "sem" : "sd"] ?? "unavailable"}<br>${row.filename}` : row.filename);
+      const pointText = sortedRows.map(row => row.statistics ? `${row.metadata.condition}; ${row.statistics.basis ?? "replicates"}; n=${row.statistics.n}; ${errorType(row).toUpperCase()}=${row.statistics[errorType(row)] ?? "unavailable"}<br>${row.filename}` : row.filename);
       const repeatedX = new Set(xValues).size < xValues.length;
       if (style.curveMode === "movingAverage" && !repeatedX) {
         const common = {
