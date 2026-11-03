@@ -158,3 +158,8 @@ assert.equal(applied[3].metadata.opticalPower,'');
 assert.equal(calibratedFiles(savedFiles,{...savedPowerCalibration,enabled:false}),savedFiles);
 assert.throws(()=>validatePowerCalibration({...savedPowerCalibration,automaticWavelength:'yes'}));
 console.log('Saved calibration: both wavelengths, original means, project roundtrip and missing metadata passed.');
+// Values independently checked against the user-supplied 280/365 ZIPs on 2026-11-03.
+near(summarizePower(selectPowerWavelength(savedPowerCalibration,280)).points.find(p=>p.currentMa===500).powerMw,.08145088);
+near(summarizePower(selectPowerWavelength(savedPowerCalibration,365)).points.find(p=>p.currentMa===1000).powerMw,1.020733);
+assert.equal(applied[0].metadata.current,'100');
+assert.equal(applied[1].metadata.current,'100');

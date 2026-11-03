@@ -11,7 +11,8 @@ export type PhotoField = typeof photoFields[number];
 export type PhotoPair = Record<PhotoField, string> & { id: string; original?: Record<string, string>; calibration?: PowerCalibration; scaleReview?: string };
 export type PhotoState = { pairs: PhotoPair[]; precursor: number; tolerance: number; unit: "mW" | "µW"; means: boolean; fit: boolean; fitMeans: boolean; origin: boolean; min: string; max: string; labels: Record<string, string>; xMin: string; xMax: string; yMin: string; yMax: string };
 export const defaultPhotoState = (): PhotoState => ({pairs: [], precursor: 457, tolerance: 0.5, unit: "mW", means: true, fit: true, fitMeans: true, origin: false, min: "", max: "", labels: {}, xMin: "", xMax: "", yMin: "", yMax: ""});
-export const newPhotoPair = (): PhotoPair => ({...Object.fromEntries(photoFields.map(key => [key, ""])), id: crypto.randomUUID(), scale: "unknown"} as PhotoPair);
+export const newPhotoPair = (calibration?: PowerCalibration): PhotoPair => ({...Object.fromEntries(photoFields.map(key => [key, ""])), id: crypto.randomUUID(), scale: "unknown",
+  ...(calibration?.enabled ? {calibration: structuredClone(calibration)} : {})} as PhotoPair);
 // A scale review belongs to the selected sources, not to the row position.
 export function changePhotoSource(pair: PhotoPair, side: "off" | "on", fileId: string): PhotoPair {
   return pair[`${side}_file`] === fileId ? pair : {...pair, [`${side}_file`]: fileId, scale: "unknown", scaleReview: ""};
@@ -37,7 +38,7 @@ export function quantity(raw: string, kind: "time" | "current" | "power"): numbe
 const number = (raw: string) => raw.trim() && Number.isFinite(Number(raw.replace(",", "."))) ? Number(raw.replace(",", ".")) : null;
 
 /** CSV/TSV including quoted delimiters/newlines; no silent row dropping. */
-export function parsePhotoTable(text: string): PhotoPair[] {
+export function parsePhotoTable(text: string, calibration?: PowerCalibration): PhotoPair[] {
   text = text.replace(/^\uFEFF/, "");
   const first = text.split(/\r?\n/)[0];
   const delimiter = first.includes("\t") ? "\t" : first.includes(";") ? ";" : ",";
@@ -59,7 +60,7 @@ export function parsePhotoTable(text: string): PhotoPair[] {
   return records.map((cells, i) => {
     if (cells.length !== headers.length) throw Error(`Linha ${i + 2}: número de colunas incompatível.`);
     const original = Object.fromEntries(headers.map((h, j) => [h, cells[j]]));
-    return {...newPhotoPair(), ...Object.fromEntries(photoFields.filter(k => k in original).map(k => [k, original[k]])), ...(original.comparability_review ? {scaleReview: original.comparability_review} : {}), original};
+    return {...newPhotoPair(original.power?.trim() ? undefined : calibration), ...Object.fromEntries(photoFields.filter(k => k in original).map(k => [k, original[k]])), ...(original.comparability_review ? {scaleReview: original.comparability_review} : {}), original};
   });
 }
 export const photoTemplate = "condition\treplicate\twavelength_nm\ttime\tcurrent\tpower\toff\ton\toff_time\tinstrument\tgeometry\toff_id\ton_id\tscale\nP1\t1\t365\t1 s\t100 mA\t10 µW\t1000\t500\t1 s\tInstrument A\tGeometry A\tcontrol-1\ton-1\tunknown";

@@ -17,7 +17,7 @@ export function PhotodepletionControls({state, onChange, analysis, files, calibr
   const change = (patch: Partial<PhotoState>) => onChange({...state, ...patch});
   const edit = (id: string, patch: Partial<PhotoPair>) => change({pairs: state.pairs.map(pair => pair.id === id ? {...pair, ...patch} : pair)});
   const importText = (content: string) => {
-    try {const pairs = parsePhotoTable(content); change({pairs: [...state.pairs, ...pairs]}); setSelected(pairs[0].id); setPage(Math.floor(state.pairs.length / 10)); setStatus(`${pairs.length} pares adicionados. Revise escala, unidades e associações.`);}
+    try {const pairs = parsePhotoTable(content, calibration); change({pairs: [...state.pairs, ...pairs]}); setSelected(pairs[0].id); setPage(Math.floor(state.pairs.length / 10)); setStatus(`${pairs.length} pares adicionados. Revise escala, unidades e associações.`);}
     catch (error) {setStatus(error instanceof Error ? error.message : "Falha ao importar");}
   };
   const pair = state.pairs.find(p => p.id === selected);
@@ -27,10 +27,11 @@ export function PhotodepletionControls({state, onChange, analysis, files, calibr
     <p><strong>Photodepletion — FMN</strong><br />Y = ln(I_OFF/I_ON), sem divisão pela potência. Eixos lineares; cada série mantém comprimento de onda, tempo, instrumento e geometria fixos.</p>
     <details className="plot-control-group" open><summary>1. Importar tabela</summary>
       <p>Use os cabeçalhos do modelo. Tempo, corrente e potência incluem unidade em cada célula. CSV, TSV e colagem são aceitos; linhas importadas são acrescentadas.</p>
+      {calibration?.enabled && <p>A calibração salva é o padrão para novos pares. Informe corrente e comprimento de onda; não é preciso importar o powermeter. Na tabela, deixe <code>power</code> vazio para calcular, ou preencha uma potência medida para usá-la.</p>}
       <button type="button" className="secondary-button" onClick={() => downloadTextFile("photodepletion-modelo.tsv", photoTemplate, "text/tab-separated-values;charset=utf-8")}>Baixar modelo fictício</button>
       <label>Importar CSV/TSV<input type="file" accept=".csv,.tsv,.txt" onChange={async event => {const file = event.target.files?.[0]; if (file) {try {if (file.size > 5_000_000) throw Error("Limite de 5 MB por tabela."); importText(await file.text());} catch (error) {setStatus(String(error));}} event.target.value = "";}} /></label>
       <label>Tabela colada<textarea aria-label="Tabela Photodepletion" rows={5} value={text} onChange={e => setText(e.target.value)} placeholder={photoTemplate.split("\n")[0]} /></label>
-      <div className="control-button-row"><button type="button" onClick={() => importText(text)}>Importar tabela colada</button><button type="button" className="secondary-button" onClick={() => {const p = newPhotoPair(); change({pairs: [...state.pairs, p]}); setSelected(p.id); setPage(Math.floor(state.pairs.length / 10));}}>Novo par OFF/ON</button></div>
+      <div className="control-button-row"><button type="button" onClick={() => importText(text)}>Importar tabela colada</button><button type="button" className="secondary-button" onClick={() => {const p = newPhotoPair(calibration); change({pairs: [...state.pairs, p]}); setSelected(p.id); setPage(Math.floor(state.pairs.length / 10));}}>Novo par OFF/ON</button></div>
       <p role="status">{status}</p>
       <p>Declare <code>scale</code> como <code>comparable</code> somente para intensidades comparáveis, ou <code>basepeak</code> para espectros normalizados individualmente. <code>unknown</code> exige revisão. Nunca deduzimos a escala pelos números.</p>
     </details>
@@ -48,7 +49,8 @@ export function PhotodepletionControls({state, onChange, analysis, files, calibr
         {(["off", "on"] as const).map(side => <label key={side}>Arquivo LED {side.toUpperCase()}<select value={pair[`${side}_file`]} onChange={e => {edit(pair.id, changePhotoSource(pair, side, e.target.value)); setStatus("Fonte alterada. Revise e confirme novamente a escala das intensidades deste par.");}}><option value="">Usar intensidade da tabela</option>{pair[`${side}_file`] && !files.some(f => f.id === pair[`${side}_file`]) && <option value={pair[`${side}_file`]}>Arquivo ausente ({pair[`${side}_file`]})</option>}{files.map(f => <option key={f.id} value={f.id}>{sourceLabel(f)}</option>)}</select></label>)}
         <p>Trocar a fonte OFF ou ON exige uma nova confirmação de escala e justificativa.</p>
         <p>OFF: {result?.offFile || "tabela"} → {format(result?.off ?? null)}<br />ON: {result?.onFile || "tabela"} → {format(result?.on ?? null)}</p>
-        <label>Origem da potência<select value={pair.calibration ? "calibration" : "measured"} onChange={e => edit(pair.id, {calibration: e.target.value === "calibration" && calibration ? structuredClone(calibration) : undefined})}><option value="measured">Potência óptica medida na tabela</option><option value="calibration" disabled={!calibration?.enabled && !pair.calibration}>Associar cópia da calibração salva</option></select></label>
+        <label>Origem da potência<select value={pair.calibration ? "calibration" : "measured"} onChange={e => edit(pair.id, {calibration: e.target.value === "calibration" && calibration ? structuredClone(calibration) : undefined})}><option value="measured">Potência óptica medida na tabela</option><option value="calibration" disabled={!calibration?.enabled && !pair.calibration}>Calibração salva: corrente → potência</option></select></label>
+        {pair.calibration && <p>Potência calculada: {format(result?.power ?? null)} {state.unit}</p>}
         {pair.calibration && <p>A cópia usada acompanha este par no projeto e no CSV. Alterar a calibração geral não modifica este par. Selecione potência medida e associe novamente para atualizar.</p>}
         {result && <><p role="status">{result.reasons.join("; ") || "Par válido"}</p>{result.warnings.map(w => <p className="validation-notice" key={w}>{w}</p>)}<details><summary>Proveniência da extração / calibração</summary><p>{result.provenance || "Intensidades e potência da tabela; uma linha por réplica experimental."}</p></details></>}
         <p>Para compartilhar OFF, selecione o mesmo arquivo ou repita o ID do controle. Documente exclusões no campo de motivo; todos os pares permanecem no export.</p>

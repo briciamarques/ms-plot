@@ -61,6 +61,20 @@ files[1].thermo.scanRanges=[{start:1,end:1}]; near(analyze([pair({off_file:'off'
 assert.match(analyze([pair({off_file:'missing'})]).results[0].reasons.join(),/não encontrado/);
 files[1].metadata.activationTime='2 s'; assert.match(analyze([pair({off_file:'off',on_file:'on'})],{},files).results[0].reasons.join(),/incompatível/);
 const calibration={...defaultPowerCalibration([{filename:'measured.csv',wavelengthNm:365,currentMa:100,intervalSeconds:1,replicate:'1',powersW:[0.00002]}]),enabled:true,subtractBackground:false};
+const defaultPair=newPhotoPair(calibration);
+assert.deepEqual(defaultPair.calibration,calibration);
+assert.notEqual(defaultPair.calibration,calibration);
+const tableWithoutPower=photoTemplate.replace('10 µW','');
+const importedDefault=parsePhotoTable(tableWithoutPower,calibration)[0];
+near(analyze([importedDefault]).results[0].power,.02);
+assert.equal(importedDefault.current,'100 mA');
+assert.equal(parsePhotoTable(photoTemplate,calibration)[0].calibration,undefined);
+assert.equal(parsePhotoTable(photoTemplate.replace('10 µW','0 mW'),calibration)[0].calibration,undefined);
+assert.equal(parsePhotoTable(tableWithoutPower,{...calibration,enabled:false})[0].calibration,undefined);
+assert.equal(newPhotoPair().calibration,undefined);
+assert.equal(newPhotoPair({...calibration,enabled:false}).calibration,undefined);
+defaultPair.calibration.measurements[0].powersW[0]=123;
+assert.equal(calibration.measurements[0].powersW[0],.00002);
 near(analyze([pair({power:'',calibration})]).results[0].power,0.02);
 assert.equal(analyze([pair({power:''})]).means.length,0); // never implicitly use current as power
 assert.equal(analyze([pair({wavelength_nm:'280',power:'',calibration})]).means.length,0);

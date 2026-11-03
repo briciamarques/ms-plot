@@ -139,6 +139,14 @@ The defaults use the 1 s current sweeps (12 currents at 280 nm, 22 at 365 nm),
 subtract the initial background and do not interpolate or assume a missing wavelength.
 The interval is the powermeter sampling interval, not irradiation time.
 
+New Photodepletion pairs also copy the enabled project calibration by default.
+Imported rows with a blank `power` use that calibration; an explicit measured
+power (including zero) takes precedence. Current and wavelength are still required.
+Existing pairs retain their previous power source and calibration snapshot.
+Current-axis plots remain in mA until the optical-power axis is selected.
+The saved 1 s measurements were checked against `Powermeter_UDRIVER_280.zip` and
+`Powermeter_UDRIVER_365.zip` on 2026-11-03 and match exactly.
+
 **Saved power calibration**, a collapsed box in Plot → Data, shows the measured
 current-to-power table. There is no separate upload workspace. Existing projects
 retain their calibration, including custom settings and explicitly disabled
