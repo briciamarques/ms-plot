@@ -7,7 +7,7 @@ import { analyzePhoto, readPhotoState, photoCsv } from "./photodepletion";
 import { escapeCsvValue } from "./csv";
 import { readExchange, writeExchange, sha256, encodeBase64, decodeBase64 } from "./catalogCodec";
 import { canonical, verifyReceipt } from "./catalogExchangeCore";
-import { readErrorBars, errorBarFile } from "./errorBars";
+import { readErrorBars } from "./errorBars";
 import { plotAxisValue } from "./format";
 import { plotYValue, type XAxisKey } from "../types";
 
@@ -77,7 +77,12 @@ export async function exportCatalogResult(source: ProjectSnapshot, png: Uint8Arr
   const context = project.catalog!;
   const photoMode = project.plotSettings?.analysisMode === "photodepletion";
   const barSettings=readErrorBars(project.plotSettings?.errorBars);
-  const exclusions = photoMode ? [] : source.files.filter(file=>!errorBarFile(file,barSettings).included).map(file=>({inputId:file.catalog?.input.inputId ?? file.id,name:file.filename,reason:errorBarFile(file,barSettings).reason}));
+  const exclusions = photoMode ? [] : Object.entries(barSettings.files).filter(([,choice])=>!choice.included).map(([id,choice])=>{
+    const file=source.files.find(file=>file.id===id);
+    const input=file?.catalog?.input ?? context.selection.inputs.find(input=>input.inputId===id);
+    const descriptor=context.selection.files.find(item=>item.id===input?.txtFileId);
+    return {inputId:input?.inputId ?? id,name:file?.filename ?? descriptor?.name ?? id,reason:choice.reason};
+  });
   if(exclusions.some(item=>!item.reason.trim())) throw Error("Add a reason for each excluded file before exporting the result to MS Catalog.");
   const photo = readPhotoState(project.plotSettings?.photodepletion);
   const analysis = analyzePhoto(photo, project.files);

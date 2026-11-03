@@ -68,7 +68,8 @@ selection. Local table-only analyses use the normal project/data exports.
 The shared validator is vendored from MS Catalog's `dist/exchange-core.js` into
 `src/utils/catalogExchangeCore.ts` (unchanged; TypeScript checking disabled for
 the shared JavaScript). It checks ZIP central-directory metadata and streaming
-expansion limits. Limits: 20 MiB/file, 4 MiB/manifest,
+expansion limits. Limits: 20 MiB/file (80 MiB only for a native project with role
+`project` under `project/`), 4 MiB/manifest,
 100 MiB/package, 200 TXT and 1,000 members; hashes, versions, paths and lineage are
 validated before replacing a project. RAW/scans and credentials are not accepted
 in exchange packages. No access to the catalog account is granted to the editor.

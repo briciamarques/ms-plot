@@ -149,6 +149,8 @@ assert.deepEqual(barReopened.project.plotSettings.errorBars,catalogBarSettings);
 assert.equal(barReopened.project.files.length,2);
 const reopenedBars=summarizeErrorBars(processSpectra(barReopened.project.files,[{id:'ion',targetMz:100,label:''}],.5),barReopened.project.files,'activationTime','absolute',barReopened.project.plotSettings.errorBars);
 assert.equal(reopenedBars.rows[0].statistics.sd,catalogBarSummary.rows[0].statistics.sd);
+const barReexport=await exportCatalogResult(barReopened.project,png,reopenedBars.rows,plotRowsToCsv(reopenedBars.rows,'activationTime','absolute',1));
+assert.deepEqual(barReexport.manifest.result.method.parameters.errorBars.exclusions,barExport.manifest.result.method.parameters.errorBars.exclusions);
 for(const invalidBars of [{}, {...bars,mode:'manual'}, {...bars,files:{bad:{included:'yes'}}}, {...bars,independence:null}]) assert.throws(()=>parseProjectSnapshot(JSON.stringify({...catalogBars,plotSettings:{errorBars:invalidBars}})),/error bar/);
 const missingReason=structuredClone(catalogBars);missingReason.plotSettings.errorBars.files[catalogBars.files[1].id].reason='';
 await assert.rejects(()=>exportCatalogResult(missingReason,png,catalogBarSummary.rows,''),/reason/);

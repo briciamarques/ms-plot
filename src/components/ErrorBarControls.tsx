@@ -13,7 +13,7 @@ export function ErrorBarControls({files,settings,onChange,warnings,pointCount}:P
   const included=files.filter(file=>errorBarFile(file,settings).included).length;
   const unavailable=Object.entries(settings.files).filter(([id,choice])=>!choice.included && !files.some(file=>file.id===id)).length;
   const update=(file:SpectrumFile,patch:Partial<ErrorBarFile>)=>onChange({...settings,files:{...settings.files,[file.id]:{...errorBarFile(file,settings),...patch}}});
-  const snapshot=()=>Object.fromEntries(files.map(file=>[file.id,errorBarFile(file,settings)]));
+  const snapshot=()=>({...settings.files,...Object.fromEntries(files.map(file=>[file.id,errorBarFile(file,settings)]))});
   return <details className="plot-control-group plot-accordion" open>
     <summary>Error bars</summary>
     <div className="plot-accordion-content">
