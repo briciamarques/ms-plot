@@ -3062,7 +3062,7 @@ export const savedPowerCalibration: PowerCalibration = {
   "backgroundIntervalSeconds": 1,
   "backgroundSource": "initial",
   "subtractBackground": true,
-  "interpolate": false,
+  "interpolate": true,
   "assumeWavelength": false,
   "enabled": true,
   "automaticWavelength": true

@@ -1,6 +1,6 @@
 import { exportCatalogResult, downloadPackage } from "../utils/catalogProject";
 import { PhotodepletionControls } from "./PhotodepletionControls";
-import { analyzePhoto, photoCsv, photoTraces, readPhotoState, preparePhotoPairs } from "../utils/photodepletion";
+import { analyzePhoto, photoCsv, photoTraces, readPhotoState, prepareQuickPhoto } from "../utils/photodepletion";
 import Plotly from "plotly.js-dist-min";
 import { Download, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -38,7 +38,7 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
   const isPhoto = analysisMode === "photodepletion";
   const [photo, setPhoto] = useState(() => {
     const state=readPhotoState(initialSettings.photodepletion);
-    return initialSettings.analysisMode === "photodepletion" && !state.pairs.length ? {...state,pairs:preparePhotoPairs(photoFiles,powerCalibration)} : state;
+    return initialSettings.analysisMode === "photodepletion" && !state.pairs.length ? prepareQuickPhoto(photoFiles,powerCalibration,state) : state;
   });
   const photoAnalysis = useMemo(() => analyzePhoto(photo, photoFiles), [photo, photoFiles]);
   const [collapsed, setCollapsed] = useState(false);
@@ -741,6 +741,9 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
   };
 
   const updateXAxis = (nextAxis: XAxisKey) => {
+    if (nextAxis === "opticalPower" && powerCalibration && onPowerCalibrationChange) {
+      onPowerCalibrationChange({...powerCalibration, enabled: true, interpolate: true});
+    }
     setXAxis(nextAxis);
     setXTitle(axisLabel(nextAxis));
     const duration = nextAxis === "activationTime" || nextAxis === "acqTime";
@@ -1002,28 +1005,12 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
             </button>
           </div>
 
-          <label className="analysis-mode-control">Modo de análise<select aria-label="Modo de análise" value={analysisMode} onChange={event => {setAnalysisMode(event.target.value); if(event.target.value === "photodepletion" && !photo.pairs.length) setPhoto({...photo,pairs:preparePhotoPairs(photoFiles,powerCalibration)});}}><option value="intensity">Ion intensity</option><option value="photodepletion">Photodepletion</option></select></label>
+          <label className="analysis-mode-control">Modo de análise<select aria-label="Modo de análise" value={analysisMode} onChange={event => {setAnalysisMode(event.target.value); if(event.target.value === "photodepletion" && !photo.pairs.length) setPhoto(prepareQuickPhoto(photoFiles,powerCalibration,photo));}}><option value="intensity">Ion intensity</option><option value="photodepletion">Photodepletion</option></select></label>
           <FitResults traces={isPhoto || processingBusy ? [] : plotData} filename={safeProjectFilename(projectName).replace(".pdmsplot.json", "")} />
           {activeTab === "data" ? (
             <div className="plot-menu">
             {isPhoto && <PhotodepletionControls state={photo} onChange={setPhoto} analysis={photoAnalysis} files={photoFiles} calibration={powerCalibration} onCalibrationChange={onPowerCalibrationChange} />}
-            {!isPhoto && replicateMode !== "individual" && <p role="status">This saved project uses legacy replicate settings. Choose a mode in Error bars to switch to the editable acquisition groups.</p>}
-            {!isPhoto && <ErrorBarControls files={files} settings={errorBars} onChange={next=>{setReplicateMode("individual");setErrorBars(next);}} warnings={aggregation.warnings} pointCount={rows.length} />}
-            <details hidden={isPhoto} className="plot-control-group plot-accordion">
-              <summary>Text and axes</summary>
-            <div className="plot-accordion-content">
-              {replicateMode !== "individual" && <label><span>Legacy replicate calculation</span><select aria-label="Replicates" value={replicateMode} onChange={event => setReplicateMode(event.target.value as ReplicateMode)}>
-                <option value="individual">Individual files</option><option value="sd">Mean ± sample SD</option><option value="sem">Mean ± SEM</option>
-              </select></label>}
-              {replicateMode !== "individual" && <p>Equal weight per file. Normalization is applied per file before averaging. Groups match the other metadata and spectrum type; edit Experiment group to separate batches. Missing or repeated replicate IDs are not pooled.</p>}
-              {repeatedX && (curveMode === "connect" || curveMode === "movingAverage") && <p role="status">Multiple files share the same x value. They are shown as individual points, without connecting or smoothing repetitions. For independent replicates, fill Replicate and Experiment group, then choose Mean ± sample SD.</p>}
-              {isTimeAxis(xAxis) && <p>Explicit time units are converted before plotting. Unitless values use {xAxis === "retentionTime" ? "seconds" : "milliseconds"}. {omittedAxisFiles > 0 ? `${omittedAxisFiles} files with missing or invalid times are omitted.` : ""}</p>}
-              {(xAxis === "current" || xAxis === "voltage") && omittedAxisFiles > 0 && <p role="status">{omittedAxisFiles} files without a numeric {xAxis} are omitted. LED OFF stays in Data; assign a reference coordinate explicitly if you want to plot it.</p>}
-              {xAxis === "opticalPower" && <p role="status">Optical power uses the saved measurements. {omittedAxisFiles > 0 ? `${omittedAxisFiles} files without matching calibration are omitted; check their current and wavelength.` : "Values use the active calibration and background choice."} Vertical error bars describe ion intensity, not power uncertainty.</p>}
-              {xAxis === "opticalPower" && <details><summary>Power calibration used</summary>{[...new Set(axisRows.map(row => row.metadata.powerCalibration).filter(Boolean))].map(method => <p key={method}>{method}</p>)}</details>}
-              {omittedWavelengthFiles > 0 && <p role="status">Segments without a positive numeric wavelength: {omittedWavelengthFiles}. Omitted from this plot and its normalization; available in Data and segment spectrum export.</p>}
-              <div className="plot-controls">
-                <label>
+            {!isPhoto && <section className="plot-control-group"><div className="plot-controls">                <label>
                   <span>x axis</span>
                   <select
                     value={xAxis}
@@ -1062,6 +1049,23 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
                 </label>
                 <p className="fit-guidance">{yMode === "selectedSum" ? "For each file/segment: 100 × ion intensity / sum of all targets in Ions. Changing the ion list changes the percentages. Hiding a curve in the legend does not change the denominator. An all-zero segment is shown as zero." : yMode === "relative" ? "Each ion is divided by its own maximum across the plotted files. This compares temporal profiles, not relative abundance between ions." : "Extracted intensity before normalization."}</p>
 
+</div>{xAxis === "opticalPower" && <p>Potência estimada pela calibração salva de cada wavelength; correntes intermediárias usam interpolação linear. O alinhamento do experimento deve corresponder à calibração.</p>}<p>{errorBars.mode === "acquisition-sd" ? "Curvas: média por condição ± SD entre aquisições." : errorBars.mode === "individual" ? "Pontos individuais; ajuste em Error bars para mostrar médias." : "Média e SEM das unidades revisadas."}</p></section>}
+            {!isPhoto && replicateMode !== "individual" && <p role="status">This saved project uses legacy replicate settings. Choose a mode in Error bars to switch to the editable acquisition groups.</p>}
+            {!isPhoto && <ErrorBarControls files={files} settings={errorBars} onChange={next=>{setReplicateMode("individual");setErrorBars(next);}} warnings={aggregation.warnings} pointCount={rows.length} />}
+            <details hidden={isPhoto} className="plot-control-group plot-accordion">
+              <summary>Text and axes</summary>
+            <div className="plot-accordion-content">
+              {replicateMode !== "individual" && <label><span>Legacy replicate calculation</span><select aria-label="Replicates" value={replicateMode} onChange={event => setReplicateMode(event.target.value as ReplicateMode)}>
+                <option value="individual">Individual files</option><option value="sd">Mean ± sample SD</option><option value="sem">Mean ± SEM</option>
+              </select></label>}
+              {replicateMode !== "individual" && <p>Equal weight per file. Normalization is applied per file before averaging. Groups match the other metadata and spectrum type; edit Experiment group to separate batches. Missing or repeated replicate IDs are not pooled.</p>}
+              {repeatedX && (curveMode === "connect" || curveMode === "movingAverage") && <p role="status">Multiple files share the same x value. They are shown as individual points, without connecting or smoothing repetitions. For independent replicates, fill Replicate and Experiment group, then choose Mean ± sample SD.</p>}
+              {isTimeAxis(xAxis) && <p>Explicit time units are converted before plotting. Unitless values use {xAxis === "retentionTime" ? "seconds" : "milliseconds"}. {omittedAxisFiles > 0 ? `${omittedAxisFiles} files with missing or invalid times are omitted.` : ""}</p>}
+              {(xAxis === "current" || xAxis === "voltage") && omittedAxisFiles > 0 && <p role="status">{omittedAxisFiles} files without a numeric {xAxis} are omitted. LED OFF stays in Data; assign a reference coordinate explicitly if you want to plot it.</p>}
+              {xAxis === "opticalPower" && <p role="status">Optical power uses the saved measurements. {omittedAxisFiles > 0 ? `${omittedAxisFiles} files without matching calibration are omitted; check their current and wavelength.` : "Values use the active calibration and background choice."} Vertical error bars describe ion intensity, not power uncertainty.</p>}
+              {xAxis === "opticalPower" && <details><summary>Power calibration used</summary>{[...new Set(axisRows.map(row => row.metadata.powerCalibration).filter(Boolean))].map(method => <p key={method}>{method}</p>)}</details>}
+              {omittedWavelengthFiles > 0 && <p role="status">Segments without a positive numeric wavelength: {omittedWavelengthFiles}. Omitted from this plot and its normalization; available in Data and segment spectrum export.</p>}
+              <div className="plot-controls">
                 <label>
                   <span>Plot title</span>
                   <input

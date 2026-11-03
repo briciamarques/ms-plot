@@ -3,11 +3,11 @@ import { emptyMetadata } from "../types";
 import type { ExchangePackage, ResultPackage, FileDescriptor, Json, TableDescription } from "./analysis-exchange";
 import { parseSpectrumTxt } from "./parser";
 import { createEmptyProject, validateProjectSnapshot } from "./project";
-import { analyzePhoto, readPhotoState, photoCsv } from "./photodepletion";
+import { analyzePhoto, readPhotoState, photoCsv, photoOffIds } from "./photodepletion";
 import { escapeCsvValue } from "./csv";
 import { readExchange, writeExchange, sha256, encodeBase64, decodeBase64 } from "./catalogCodec";
 import { canonical, verifyReceipt } from "./catalogExchangeCore";
-import { readErrorBars } from "./errorBars";
+import { defaultErrorBars, readErrorBars } from "./errorBars";
 import { plotAxisValue } from "./format";
 import { plotYValue, type XAxisKey } from "../types";
 import { fillBlankMetadataFromSources } from "./filenameMetadata";
@@ -26,7 +26,15 @@ export async function importCatalogPackage(bytes: Uint8Array): Promise<CatalogPr
   if (manifest.kind === "result") {
     if (manifest.result.editor.app !== "ms-plot" || manifest.result.artifacts.project.formatId !== "pd-ms-plot-project" || manifest.result.artifacts.project.formatVersion !== "1") throw Error("Este resultado pertence a outro editor/formato. Abra-o no editor indicado pelo catálogo.");
     const descriptor = manifest.files.find(f => f.id === manifest.result.artifacts.project.fileId)!;
-    const project = validateProjectSnapshot(JSON.parse(decoder.decode(entries[descriptor.path])));
+    const stored = JSON.parse(decoder.decode(entries[descriptor.path]));
+    if (stored.catalogStoredPeaks === "original-txt" && Array.isArray(stored.files)) {
+      for (const file of stored.files) {
+        if (!file.catalog?.txtBase64) throw Error("TXT original ausente no projeto compacto.");
+        file.peaks = parseCatalogTxt(decoder.decode(decodeBase64(file.catalog.txtBase64))).peaks;
+      }
+      delete stored.catalogStoredPeaks;
+    }
+    const project = validateProjectSnapshot(stored);
     if (!project.catalog || project.catalog.resultId !== manifest.result.resultId || project.catalog.versionId !== manifest.result.versionId) throw Error("Projeto e versão do manifesto não coincidem.");
     await verifyCatalogProject(project);
     if (project.catalog.selection.packageId !== manifest.selectionReceipt.packageId || await sha256(encoder.encode(project.catalog.selectionManifest)) !== manifest.selectionReceipt.manifestSha256) throw Error("Recibo da seleção não coincide com o resultado.");
@@ -54,7 +62,8 @@ export async function importCatalogPackage(bytes: Uint8Array): Promise<CatalogPr
     return {...file,metadata:fillBlankMetadataFromSources(file)};
   });
   const project: ProjectSnapshot = {...createEmptyProject(), projectName: manifest.catalog.study.name, files, selectedFileIds: files.map(f => f.id), ions: [{id: uuid(), targetMz: "457", label: "precursor"}], ionDraft: "457 precursor", catalog: {selection: manifest, selectionManifest: manifestText}};
-  // Metadata only: no automatic pairing, normalization or Photodepletion mode.
+  project.plotSettings = {errorBars: {...defaultErrorBars(), mode: "acquisition-sd"}};
+  // Descriptive acquisition means; no claim of experimental independence.
   return {manifest, project};
 }
 
@@ -88,7 +97,8 @@ export async function exportCatalogResult(source: ProjectSnapshot, png: Uint8Arr
   if(exclusions.some(item=>!item.reason.trim())) throw Error("Add a reason for each excluded file before exporting the result to MS Catalog.");
   const photo = readPhotoState(project.plotSettings?.photodepletion);
   const analysis = analyzePhoto(photo, project.files);
-  const ids = photoMode ? unique(photo.pairs.flatMap(p => [p.off_file, p.on_file])) : unique(displayedRows.flatMap(r => r.statistics?.fileIds ?? [r.fileId]));
+  if(photoMode && photo.pairs.reduce((count,pair)=>count+photoOffIds(pair).length,0)>1000) throw Error("Para salvar no catálogo, escolha OFF inicial ou OFF final e exporte cada referência separadamente. A comparação completa continua disponível em Export (PNG/SVG ou CSV). O catálogo aceita até 1000 relações de fontes por resultado.");
+  const ids = photoMode ? unique(photo.pairs.flatMap(p => [...photoOffIds(p), p.on_file])) : unique(displayedRows.flatMap(r => r.statistics?.fileIds ?? [r.fileId]));
   if (!ids.length || ids.includes("")) throw Error("Todos os pares exportados devem estar ligados a TXT OFF/ON do catálogo. Intensidades somente da tabela podem ser exportadas pelo CSV normal.");
   // Aggregated rows carry source file IDs in their statistics.
   if (ids.some(id => !project.files.some(f => f.id === id))) throw Error("Há uma fonte sem vínculo inequívoco. Exporte pontos individuais ou revise os arquivos.");
@@ -109,10 +119,10 @@ export async function exportCatalogResult(source: ProjectSnapshot, png: Uint8Arr
   }
   const transformationId = uuid();
   const seriesMap = new Map<string, string>();
-  const series = (photoMode ? analysis.series.map(([key, label]) => ({key, label, inputIds: unique(analysis.results.filter(r => r.series === key).flatMap(r => [inputByFile.get(r.pair.off_file)!, inputByFile.get(r.pair.on_file)!]))}))
+  const series = (photoMode ? analysis.series.map(([key, label]) => ({key, label, inputIds: unique(analysis.results.filter(r => r.series === key).flatMap(r => [...photoOffIds(r.pair),r.pair.on_file].map(id=>inputByFile.get(id)!)))}))
     : unique(displayedRows.map(r => JSON.stringify([r.ionId, r.seriesId ?? ""]))).map(key => ({key, label: displayedRows.find(r => JSON.stringify([r.ionId, r.seriesId ?? ""]) === key)!.label, inputIds: unique(displayedRows.filter(r => JSON.stringify([r.ionId, r.seriesId ?? ""]) === key).flatMap(r => (r.statistics?.fileIds ?? [r.fileId]).map(id => inputByFile.get(id)!)))})))
     .map(s => {const seriesId = uuid(); seriesMap.set(s.key, seriesId); return {seriesId, label: s.label || "Íon", inputIds: s.inputIds, transformationIds: [transformationId]};});
-  const lineage = photoMode ? analysis.results.map(r => [seriesMap.get(r.series)!, JSON.stringify(unique([inputByFile.get(r.pair.off_file), inputByFile.get(r.pair.on_file)]))])
+  const lineage = photoMode ? analysis.results.map(r => [seriesMap.get(r.series)!, JSON.stringify(unique([...photoOffIds(r.pair),r.pair.on_file].map(id=>inputByFile.get(id))))])
     : displayedRows.map(r => [seriesMap.get(JSON.stringify([r.ionId, r.seriesId ?? ""]))!, JSON.stringify((r.statistics?.fileIds ?? [r.fileId]).map(id => inputByFile.get(id)))]);
   const barAxis=(project.plotSettings?.xAxis ?? "acqTime") as XAxisKey;
   const barMultiplier=Number(project.plotSettings?.xValueMultiplier ?? 1);
@@ -141,18 +151,35 @@ export async function exportCatalogResult(source: ProjectSnapshot, png: Uint8Arr
   };
   const pngId = await add("figure", "figure.png", "image/png", png);
   const csvId = await add("table", "analysis.csv", "text/csv", encoder.encode(table.text));
-  const projectId = await add("project", "analysis.pdmsplot.json", "application/json", encoder.encode(JSON.stringify(project)));
+  // The exact TXT is already embedded. Reconstruct numeric peaks on reopen,
+  // avoiding a second representation of millions of numbers in the artifact.
+  const storedProject = {...project, catalogStoredPeaks:"original-txt", files:project.files.map(file=>({...file,peaks:[]}))};
+  const projectId = await add("project", "analysis.pdmsplot.json", "application/json", encoder.encode(JSON.stringify(storedProject)));
+  const recipeSettings = asJson(project.plotSettings ?? {});
+  const calibrations: Record<string,Json> = {};
+  const calibrationKeys = new Map<string,string>();
+  if(photoMode && recipeSettings.photodepletion) {
+    const storedPhoto=recipeSettings.photodepletion as Record<string,Json>;
+    for(const item of storedPhoto.pairs as Array<Record<string,Json>>) {
+      if(!item.calibration) continue;
+      const signature=JSON.stringify(item.calibration);
+      let key=calibrationKeys.get(signature);
+      if(!key) {key=`calibration-${calibrationKeys.size+1}`;calibrationKeys.set(signature,key);calibrations[key]=item.calibration;}
+      item.calibration={reference:key};
+    }
+  }
   const limitations = ["Pacote local; importar e revisar no estudo do catálogo para salvar. Não enviado automaticamente.", "Revisões e independência experimental devem ser verificadas pelo pesquisador."];
   if (inputs.some(i => i.intensity.state !== "original")) limitations.push("Há TXT com escala original desconhecida ou transformada; consulte a revisão de comparabilidade de cada par.");
   if(errorBars) limitations.push("SD describes dispersion between acquisitions; it does not establish experimental independence. SEM uses explicitly reviewed experimental units. No scan variability is substituted.");
+  if(photoMode && photo.pairs.some(pair=>pair.off_files?.length)) limitations.push("OFF source relations are dependencies, not independent observations or reviewed experimental pairings. Each ON contributes once per reference scenario. OFF is the equal-weight arithmetic mean of the listed control acquisitions before log. Curve SD describes ON dispersion conditional on this shared reference; it excludes OFF uncertainty. Initial/final scenarios reuse ON and are not independent experiments.");
   if(exclusions.length) limitations.push("Excluded input IDs and reasons are retained in the error-bar recipe. Reimport the original selection ZIP to restore excluded TXT files.");
   const result: ResultPackage = {
     format: "ms-analysis-exchange", schemaVersion: "1.0.0", kind: "result", packageId: uuid(), createdAt: now, producer: {app: "ms-plot", version: APP_VERSION}, catalog: context.selection.catalog, requiredFeatures: [], inputs, files, extensions: structuredClone(context.envelopeExtensions ?? context.selection.extensions),
     selectionReceipt: {packageId: context.selection.packageId, manifestSha256: await sha256(encoder.encode(context.selectionManifest))},
     result: {resultId: context.resultId, versionId: context.versionId, previousVersionId, derivedFrom: null, title: project.projectName, analysisType: photoMode ? "photodepletion" : "other", editor: {app: "ms-plot", version: APP_VERSION}, status: "exploratory-unvalidated", usedInputIds,
-      method: {id: photoMode ? "ln-off-on-v1" : "ion-window-maximum-v1", version: "1", definition: photoMode ? "ln(I_OFF/I_ON); acquisition average TXT; log each pair before condition mean and sample SD; independent per-series OLS" : "Maximum intensity in target m/z window of each original TXT; figure transformations recorded in plotSettings", parameters: asJson({tolerance: project.tolerance, ions: project.ions, plotSettings: project.plotSettings, powerCalibration: project.powerCalibration, errorBars})},
-      transformations: [{id: transformationId, order: 1, scope: "calculation", inputIds: usedInputIds, method: photoMode ? "precursor-window-maximum/log-pair/condition-mean-sample-SD/OLS" : "ion-window-maximum/plot-recipe", methodVersion: "1", parameters: asJson({plotSettings: project.plotSettings, errorBars})}], series,
-      photodepletion: photoMode ? {pairs: analysis.results.map(r => ({pairId: r.pair.id, offInputId: inputByFile.get(r.pair.off_file)!, onInputId: inputByFile.get(r.pair.on_file)!, status: r.reasons.length ? "rejected" : "accepted", review: {reviewer: "local-user", at: now, reason: r.reasons.join("; ") || r.pair.scaleReview || "Explicit pair selection and comparable-scale declaration"}})), formula: "Math.log(I_OFF / I_ON)", extraction: {method: "maximum within m/z window of acquisition-average TXT", window: {precursorMz: photo.precursor, halfWindowMz: photo.tolerance}, unit: null}, independentAxis: {name: "measured optical power or explicitly associated calibration", unit: photo.unit}, invalidSignalPolicy: "Exclude missing/nonpositive OFF/ON with reasons; preserve negative logarithms; no epsilon substitution", experimentalUnit: "user-declared acquisition / experimental replicate; never individual scans", comparability: {status: "unreviewed", review: null, limitations: analysis.results.flatMap(r => [...r.reasons, ...r.warnings])}} : null,
+      method: {id: photoMode ? "ln-off-on-v1" : "ion-window-maximum-v1", version: "1", definition: photoMode ? "ln(mean(I_OFF reference group)/I_ON); equal-weight arithmetic OFF mean before log (single OFF for manual pairs); one ON observation per reference scenario; condition mean and sample SD conditional on shared OFF; descriptive per-series OLS. Source pairs are dependencies, not replicate counts." : "Maximum intensity in target m/z window of each original TXT; figure transformations recorded in plotSettings", parameters: asJson({tolerance: project.tolerance, ions: project.ions, plotSettings: recipeSettings, calibrations, powerCalibration: project.powerCalibration, errorBars})},
+      transformations: [{id: transformationId, order: 1, scope: "calculation", inputIds: usedInputIds, method: photoMode ? "precursor-window-maximum/log-pair/condition-mean-sample-SD/OLS" : "ion-window-maximum/plot-recipe", methodVersion: "1", parameters: asJson({plotSettings: recipeSettings, calibrations, errorBars})}], series,
+      photodepletion: photoMode ? {pairs: analysis.results.flatMap(r => photoOffIds(r.pair).map(offId => ({pairId: r.pair.off_files ? uuid() : r.pair.id, offInputId: inputByFile.get(offId)!, onInputId: inputByFile.get(r.pair.on_file)!, status: r.reasons.length ? "rejected" as const : r.pair.exploratory ? "unreviewed" as const : "accepted" as const, review: r.pair.exploratory && !r.reasons.length ? null : {reviewer: r.pair.exploratory ? "automatic-validation" : "local-user", at: now, reason: r.reasons.join("; ") || r.pair.scaleReview || "Explicit pair selection and comparable-scale declaration"}}))), formula: "Math.log(I_OFF / I_ON)", extraction: {method: "maximum within m/z window of acquisition-average TXT", window: {precursorMz: photo.precursor, halfWindowMz: photo.tolerance}, unit: null}, independentAxis: {name: "measured optical power or explicitly associated calibration", unit: photo.unit}, invalidSignalPolicy: "Exclude missing/nonpositive OFF/ON with reasons; preserve negative logarithms; no epsilon substitution", experimentalUnit: "user-declared acquisition / experimental replicate; never individual scans", comparability: {status: "unreviewed", review: null, limitations: analysis.results.flatMap(r => [...r.reasons, ...r.warnings])}} : null,
       artifacts: {figureFileIds: [pngId], tables: [{fileId: csvId, delimiter: ",", encoding: "utf-8", header: true, missingValue: "", formulaSafety: "Text cells beginning with =,+,-,@,tab or CR are prefixed with apostrophe; finite numeric cells preserved.", columns: table.columns, lineageColumns: {seriesId: "catalog_series_id", inputIds: "catalog_input_ids"}}], project: {fileId: projectId, editor: "ms-plot", formatId: "pd-ms-plot-project", formatVersion: "1", datasetBindings: project.files.map(f => ({datasetId: f.id, inputIds: [f.catalog!.input.inputId]}))}}, limitations, extensions: structuredClone(context.resultExtensions ?? {})}
   };
   return {bytes: await writeExchange(result, entries), project, manifest: result};

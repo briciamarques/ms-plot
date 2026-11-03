@@ -5,7 +5,7 @@ import {pathToFileURL} from 'node:url';
 import ts from 'typescript';
 import {zipSync, strToU8} from 'fflate';
 const output = path.resolve('node_modules/.tmp/power-tests');
-for (const name of ['data/powerMeasurements','utils/savedPowerCalibration','types','utils/id','utils/project','utils/powerCalibration','utils/plot','utils/thermoScans','utils/processing','utils/bruker','utils/colorPalettes','utils/format','utils/filenameMetadata','utils/csv','utils/replicates']) {
+for (const name of ['data/powerMeasurements','utils/savedPowerCalibration','types','utils/id','utils/project','utils/parser','utils/powerCalibration','utils/plot','utils/thermoScans','utils/processing','utils/bruker','utils/colorPalettes','utils/format','utils/filenameMetadata','utils/csv','utils/replicates']) {
   const code = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {compilerOptions: {target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ES2020}}).outputText.replace(/from "(\.[^"]+)"/g, 'from "$1.mjs"');
   const target = path.join(output, `${name}.mjs`); fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target, code);
 }

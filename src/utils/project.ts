@@ -2,6 +2,7 @@ import type { IonTarget, ProjectSnapshot, SpectrumFile } from "../types";
 import { emptyMetadata, xAxisOptions } from "../types";
 import { validatePowerCalibration } from "./powerCalibration";
 import { validScanRanges } from "./thermoScans";
+import { parseSpectrumTxt } from "./parser";
 
 const record = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 function requireValue(condition: unknown, message: string): asserts condition {
@@ -26,6 +27,13 @@ export function validateProjectSnapshot(value: unknown): ProjectSnapshot {
     requireValue(!ids.has(file.id), "duplicate file IDs"); ids.add(file.id);
     if (file.fingerprint !== undefined) requireValue(typeof file.fingerprint === "string", "invalid content fingerprint");
     if (file.catalog !== undefined) requireValue(record(file.catalog) && record(file.catalog.input) && typeof file.catalog.input.inputId === "string" && record(file.catalog.input.intensity) && record(file.catalog.input.replication) && typeof file.catalog.txtBase64 === "string", "invalid catalog source");
+    if(value.catalogStoredPeaks === "original-txt") {
+      requireValue(record(file.catalog) && typeof file.catalog.txtBase64 === "string", "missing original TXT");
+      const bytes=Uint8Array.from(atob(file.catalog.txtBase64),character=>character.charCodeAt(0));
+      const parsed=parseSpectrumTxt(new TextDecoder("utf-8",{fatal:true}).decode(bytes).replace(/[;,]/g,"\t"));
+      requireValue(parsed.peaks.length>0 && parsed.invalidLineCount===0, "invalid original TXT");
+      file.peaks=parsed.peaks;
+    }
     checkPeaks(file.peaks, file.filename);
     requireValue(record(file.metadata) && Object.values(file.metadata).every(item => typeof item === "string"), `${file.filename} has invalid metadata`);
     requireValue(Array.isArray(file.warnings) && file.warnings.every(item => typeof item === "string"), `${file.filename} has invalid warnings`);
@@ -71,6 +79,8 @@ export function validateProjectSnapshot(value: unknown): ProjectSnapshot {
       for (const key of ["min", "max"]) requireValue(typeof photo[key] === "string", `invalid Photodepletion ${key}`);
       for (const key of ["xMin", "xMax", "yMin", "yMax"]) if (photo[key] !== undefined) requireValue(typeof photo[key] === "string", `invalid Photodepletion ${key}`);
       requireValue(record(photo.labels) && Object.values(photo.labels).every(v => typeof v === "string"), "invalid Photodepletion labels");
+      if(photo.quickReference !== undefined) requireValue(["compare","initial","final"].includes(String(photo.quickReference)), "invalid OFF reference");
+      if(photo.showIndividuals !== undefined) requireValue(typeof photo.showIndividuals === "boolean", "invalid individual points setting");
       const pairIds = new Set();
       for (const pair of photo.pairs) {
         requireValue(record(pair) && typeof pair.id === "string" && !pairIds.has(pair.id), "invalid or duplicate Photodepletion pair ID");
@@ -78,6 +88,9 @@ export function validateProjectSnapshot(value: unknown): ProjectSnapshot {
         for (const key of ["condition", "replicate", "wavelength_nm", "time", "current", "power", "off", "on", "off_time", "instrument", "geometry", "off_id", "on_id", "off_file", "on_file", "scale", "exclude_reason"]) requireValue(typeof pair[key] === "string", `invalid Photodepletion ${key}`);
         if (pair.original !== undefined) requireValue(record(pair.original) && Object.values(pair.original).every(v => typeof v === "string"), "invalid original Photodepletion row");
         if (pair.scaleReview !== undefined) requireValue(typeof pair.scaleReview === "string", "invalid comparability review");
+        if (pair.off_files !== undefined) requireValue(Array.isArray(pair.off_files) && pair.off_files.every(id=>typeof id === "string") && new Set(pair.off_files).size === pair.off_files.length, "invalid OFF sources");
+        if (pair.referenceGroup !== undefined) requireValue(typeof pair.referenceGroup === "string", "invalid OFF reference group");
+        if (pair.exploratory !== undefined) requireValue(typeof pair.exploratory === "boolean", "invalid exploratory flag");
         if (pair.calibration !== undefined) validatePowerCalibration(pair.calibration);
       }
     }

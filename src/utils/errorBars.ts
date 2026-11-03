@@ -19,8 +19,10 @@ export function errorBarFile(file: SpectrumFile, settings: ErrorBarSettings): Er
   if (saved) return saved;
   const input = file.catalog?.input;
   const catalogGroup = input?.experiment.metadata.experimentGroup;
-  const group = input && file.metadata.experiment === input.experiment.name && typeof catalogGroup === "string"
-    ? catalogGroup : file.metadata.experiment || (typeof catalogGroup === "string" ? catalogGroup : "Series 1");
+  // Catalog experiment names identify acquisitions, not curve groups.
+  const group = input && file.metadata.experiment === input.experiment.name
+    ? (typeof catalogGroup === "string" && catalogGroup.trim() ? catalogGroup : "Series 1")
+    : file.metadata.experiment || (typeof catalogGroup === "string" ? catalogGroup : "Series 1");
   return {included:true,group,unit:input?.replication.status === "reviewed" ? input.replication.experimentalUnit ?? "" : "",reason:""};
 }
 const average = (values: number[]) => values.reduce((sum,value)=>sum+value,0)/values.length;
@@ -36,7 +38,13 @@ function conditionKey(file: SpectrumFile, row: ProcessedRow, axis: XAxisKey) {
     ...(axis === "activationTime" || axis === "acqTime" ? [] : ["irradiationTime","exposureSetting"]),
     ...(axis === "current" || axis === "opticalPower" ? [] : ["current"]),
     ...(axis === "voltage" ? [] : ["voltage"])];
-  const setup = source ? sourceKeys.map(key=>[key,source[key] ?? null]) : null;
+  const setup = source ? sourceKeys.map(key=>[key,key === "equipmentSnapshots" && source[key] && typeof source[key] === "object"
+    ? Object.entries(source[key] as Record<string,unknown>).sort(([a],[b])=>a.localeCompare(b)).map(([slot,snapshot])=>{
+      if(!snapshot || typeof snapshot !== "object") return [slot,snapshot];
+      // capturedAt is snapshot provenance, not a change in physical setup.
+      const {capturedAt: _capturedAt,...configuration}=snapshot as Record<string,unknown>;
+      return [slot,configuration];
+    }) : source[key] ?? null]) : null;
   return [row.acquisitionKey ?? "",metadata,setup,input ? [input.intensity.state,input.intensity.unit,input.intensity.priorNormalization,input.intensity.scale,input.processing.recipe?.normalization] : null];
 }
 

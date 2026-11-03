@@ -4,12 +4,12 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import ts from 'typescript';
 const output = path.resolve('node_modules/.tmp/photo-tests');
-for (const name of ['utils/photodepletion','utils/csv','utils/plot','utils/processing','utils/bruker','utils/thermoScans','utils/powerCalibration','utils/colorPalettes','utils/format','utils/project','utils/id','utils/filenameMetadata','types']) {
+for (const name of ['utils/photodepletion','utils/csv','utils/plot','utils/processing','utils/bruker','utils/thermoScans','utils/powerCalibration','utils/colorPalettes','utils/format','utils/project','utils/parser','utils/id','utils/filenameMetadata','types']) {
   const code = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {compilerOptions: {target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ES2020}}).outputText.replace(/from "(\.[^"]+)"/g, 'from "$1.mjs"');
   const target = path.join(output, `${name}.mjs`); fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target, code);
 }
 const load = name => import(pathToFileURL(path.join(output, `${name}.mjs`)));
-const {defaultPhotoState, newPhotoPair, changePhotoSource, analyzePhoto, parsePhotoTable, photoCsv, photoTraces, photoTemplate, quantity,preparePhotoPairs,compatiblePhotoControl} = await load('utils/photodepletion');
+const {defaultPhotoState, newPhotoPair, changePhotoSource, analyzePhoto, parsePhotoTable, photoCsv, photoTraces, photoTemplate, quantity,preparePhotoPairs,prepareQuickPhoto,compatiblePhotoControl} = await load('utils/photodepletion');
 const {emptyMetadata} = await load('types');
 const {createProjectSnapshot, parseProjectSnapshot} = await load('utils/project');
 const {defaultPowerCalibration} = await load('utils/powerCalibration');
@@ -78,6 +78,21 @@ assert.equal(calibration.measurements[0].powersW[0],.00002);
 const onDraft={id:'draft-on',filename:'FMN_365LED_ON_act_1s_100mA_2.txt',metadata:emptyMetadata(),peaks:[{mz:457,intensity:10}],warnings:[],validLineCount:1,invalidLineCount:0};
 const offDraft={...onDraft,id:'draft-off',filename:'FMN_365LED_OFF_act_1s_1.txt'};
 const prepared=preparePhotoPairs([onDraft,offDraft],calibration);
+const quickSources=[onDraft,{...onDraft,id:'on-2',filename:'FMN_365LED_ON_act_1s_100mA_3.txt',peaks:[{mz:457,intensity:5}]},
+  {...offDraft,peaks:[{mz:457,intensity:20}]}, {...offDraft,id:'off-2',filename:'FMN_365LED_OFF_act_1s_2.txt',peaks:[{mz:457,intensity:40}]},
+  {...offDraft,id:'off-final',filename:'FMN_365LED_OFF_final_act_1s_1.txt',peaks:[{mz:457,intensity:10}]}];
+const quick=prepareQuickPhoto(quickSources,calibration);
+const quickAnalysis=analyzePhoto(quick,quickSources);
+assert.equal(quickAnalysis.results.length,4);assert.equal(quickAnalysis.means.length,2);
+assert.ok(quickAnalysis.results.every(r=>r.reasons.length===0 && r.pair.scale==='unknown' && r.pair.exploratory));
+assert.ok(quickAnalysis.means.every(m=>m.n===2)); // never ON × OFF count
+near(quickAnalysis.results.find(r=>r.pair.on_file===onDraft.id && r.pair.referenceGroup==='OFF inicial').y,Math.log(30/10));
+assert.equal(photoTraces(quickAnalysis,quick,{},'trms',5,2,true).length,2);
+assert.equal(prepareQuickPhoto(quickSources,calibration,quick,'final').pairs.length,2);
+const invalidQuick=quickSources.map(f=>f.id==='off-2'?{...f,peaks:[{mz:457,intensity:0}]}:f);
+assert.equal(analyzePhoto(prepareQuickPhoto(invalidQuick,calibration),invalidQuick).results.filter(r=>r.reasons.length).length,2);
+assert.equal(analyzePhoto(prepareQuickPhoto([onDraft],calibration),[onDraft]).means.length,0);
+const groupedCsv=photoCsv(quickAnalysis,quick);assert.ok(groupedCsv.includes('off_files_json'));assert.ok(groupedCsv.includes('OFF inicial'));
 assert.equal(prepared.length,1);assert.equal(prepared[0].off_file,'');assert.equal(prepared[0].scale,'unknown');
 assert.equal(prepared[0].wavelength_nm,'365');assert.equal(prepared[0].current,'100 mA');assert.equal(prepared[0].time,'1 s');
 assert.equal(preparePhotoPairs([onDraft,offDraft],calibration,prepared).length,0);

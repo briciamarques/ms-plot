@@ -14,7 +14,7 @@ export function ErrorBarControls({files,settings,onChange,warnings,pointCount}:P
   const unavailable=Object.entries(settings.files).filter(([id,choice])=>!choice.included && !files.some(file=>file.id===id)).length;
   const update=(file:SpectrumFile,patch:Partial<ErrorBarFile>)=>onChange({...settings,files:{...settings.files,[file.id]:{...errorBarFile(file,settings),...patch}}});
   const snapshot=()=>({...settings.files,...Object.fromEntries(files.map(file=>[file.id,errorBarFile(file,settings)]))});
-  return <details className="plot-control-group plot-accordion" open>
+  return <details className="plot-control-group plot-accordion">
     <summary>Error bars</summary>
     <div className="plot-accordion-content">
       <label>Error bars<select aria-label="Error bars" value={settings.mode} onChange={event=>onChange({...settings,mode:event.target.value as ErrorBarSettings["mode"],files:snapshot()})}>

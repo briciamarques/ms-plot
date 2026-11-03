@@ -9,11 +9,34 @@ import { fillBlankMetadataFromSources } from "./filenameMetadata";
 
 export const photoFields = ["condition", "replicate", "wavelength_nm", "time", "current", "power", "off", "on", "off_time", "instrument", "geometry", "off_id", "on_id", "off_file", "on_file", "scale", "exclude_reason"] as const;
 export type PhotoField = typeof photoFields[number];
-export type PhotoPair = Record<PhotoField, string> & { id: string; original?: Record<string, string>; calibration?: PowerCalibration; scaleReview?: string };
-export type PhotoState = { pairs: PhotoPair[]; precursor: number; tolerance: number; unit: "mW" | "µW"; means: boolean; fit: boolean; fitMeans: boolean; origin: boolean; min: string; max: string; labels: Record<string, string>; xMin: string; xMax: string; yMin: string; yMax: string };
+export type PhotoPair = Record<PhotoField, string> & { id: string; original?: Record<string, string>; calibration?: PowerCalibration; scaleReview?: string; off_files?: string[]; referenceGroup?: string; exploratory?: boolean };
+export type PhotoState = { pairs: PhotoPair[]; precursor: number; tolerance: number; unit: "mW" | "µW"; means: boolean; fit: boolean; fitMeans: boolean; origin: boolean; min: string; max: string; labels: Record<string, string>; xMin: string; xMax: string; yMin: string; yMax: string; quickReference?: "compare" | "initial" | "final"; showIndividuals?: boolean };
 export const defaultPhotoState = (): PhotoState => ({pairs: [], precursor: 457, tolerance: 0.5, unit: "mW", means: true, fit: true, fitMeans: true, origin: false, min: "", max: "", labels: {}, xMin: "", xMax: "", yMin: "", yMax: ""});
 export const newPhotoPair = (calibration?: PowerCalibration): PhotoPair => ({...Object.fromEntries(photoFields.map(key => [key, ""])), id: crypto.randomUUID(), scale: "unknown",
   ...(calibration?.enabled ? {calibration: structuredClone(calibration)} : {})} as PhotoPair);
+
+export const photoOffIds = (pair: PhotoPair): string[] => pair.off_files?.length ? pair.off_files : [pair.off_file];
+const finalControl = (file: SpectrumFile) => /(?:^|[_\s-])final(?:[_\s.-]|$)/i.test(file.filename);
+
+// A labelled exploratory calculation, never a declaration of comparable scales.
+// Each ON contributes once per reference scenario; controls are averaged first.
+export function prepareQuickPhoto(files: SpectrumFile[], calibration?: PowerCalibration, previous = defaultPhotoState(), reference: NonNullable<PhotoState["quickReference"]> = "compare"): PhotoState {
+  const offFiles = files.filter(file => fillBlankMetadataFromSources(file).condition.toUpperCase() === "LED OFF");
+  const hasFinal = offFiles.some(finalControl);
+  const candidates = preparePhotoPairs(files, calibration ? {...calibration, enabled:true, interpolate:true} : undefined);
+  const pairs = candidates.flatMap((pair, index) => {
+    const compatible = offFiles.filter(file => compatiblePhotoControl(pair, file, files));
+    const groups = hasFinal ? [
+      {key:"initial",label:"OFF inicial",files:compatible.filter(file=>!finalControl(file))},
+      {key:"final",label:"OFF final",files:compatible.filter(finalControl)},
+    ].filter(group=>reference === "compare" || group.key === reference) : [{key:"initial",label:"OFF",files:compatible}];
+    return groups.map(group => ({...pair, id:crypto.randomUUID(), replicate:pair.replicate || String(index+1),
+      off_files:group.files.map(file=>file.id), off_file:group.files[0]?.id ?? "", off_time:pair.time,
+      referenceGroup:group.label, exploratory:true,
+    }));
+  });
+  return {...previous, pairs, quickReference:reference, fit:false, means:true, showIndividuals:false};
+}
 
 // Preparing rows does not claim an OFF association or comparable intensity scale.
 export function preparePhotoPairs(files: SpectrumFile[], calibration?: PowerCalibration, existing: PhotoPair[] = []): PhotoPair[] {
@@ -43,7 +66,7 @@ export function compatiblePhotoControl(pair: PhotoPair, offFile: SpectrumFile, f
 }
 // A scale review belongs to the selected sources, not to the row position.
 export function changePhotoSource(pair: PhotoPair, side: "off" | "on", fileId: string): PhotoPair {
-  return pair[`${side}_file`] === fileId ? pair : {...pair, [`${side}_file`]: fileId, scale: "unknown", scaleReview: ""};
+  return pair[`${side}_file`] === fileId ? pair : {...pair, [`${side}_file`]: fileId, ...(side === "off" ? {off_files:undefined} : {}), exploratory:false, scale: "unknown", scaleReview: ""};
 }
 export function readPhotoState(value: unknown): PhotoState {
   if (!value || typeof value !== "object") return defaultPhotoState();
@@ -119,7 +142,8 @@ export function analyzePhoto(state: PhotoState, files: SpectrumFile[]) {
     if (wavelength === null || wavelength <= 0) reasons.push("Comprimento de onda inválido (nm)");
     if (current === null || current < 0) reasons.push("Corrente inválida; informe unidade (é metadado)");
     if (pair.off_time && (quantity(pair.off_time, "time") === null || quantity(pair.off_time, "time") !== time)) reasons.push("Tempos OFF/ON incompatíveis");
-    if (pair.scale !== "comparable") reasons.push(pair.scale === "basepeak" ? "Intensidades relativas ao pico-base de cada espectro são insuficientes" : "Confirme que as intensidades OFF/ON estão em escala comparável");
+    if (pair.exploratory) warnings.push("Prévia exploratória: comparabilidade OFF/ON não confirmada; potência de referência, alinhamento a conferir.");
+    if (pair.scale !== "comparable" && (!pair.exploratory || pair.scale === "basepeak")) reasons.push(pair.scale === "basepeak" ? "Intensidades relativas ao pico-base de cada espectro são insuficientes" : "Confirme que as intensidades OFF/ON estão em escala comparável");
     if (!Number.isFinite(state.precursor) || state.precursor <= 0 || !Number.isFinite(state.tolerance) || state.tolerance < 0) reasons.push("Precursor ou janela m/z inválidos");
     if (pair.calibration) {
       const source: SpectrumFile = {id: pair.id, filename: pair.id, metadata: {...emptyMetadata(), current: current === null ? "" : String(current), wavelength: wavelength === null ? "" : String(wavelength)}, peaks: [], warnings: [], validLineCount: 0, invalidLineCount: 0};
@@ -134,9 +158,9 @@ export function analyzePhoto(state: PhotoState, files: SpectrumFile[]) {
       if (!file) {reasons.push(`Arquivo ${side.toUpperCase()} não encontrado`); return null;}
       if (file.catalog) {
         const input = file.catalog.input;
-        provenance.push(`${side.toUpperCase()} catálogo: ${JSON.stringify(input)}`);
+        provenance.push(`${side.toUpperCase()} catálogo: ${JSON.stringify({inputId:input.inputId,raw:input.rawSource,txt:input.storedTxt,intensity:input.intensity,method:input.processing.recipe?.method,normalization:input.processing.recipe?.normalization})}`);
         if (input.intensity.state === "base-peak-relative") reasons.push(`${side.toUpperCase()}: catálogo registra normalização individual ao pico-base; insuficiente para Photodepletion`);
-        if (!pair.scaleReview?.trim()) reasons.push("Registre a justificativa de comparabilidade dos TXT do catálogo");
+        if (!pair.scaleReview?.trim() && !pair.exploratory) reasons.push("Registre a justificativa de comparabilidade dos TXT do catálogo");
       }
       // Bruker retains peaks without scan boundaries: cannot reconstruct acquisition means.
       if (file.bruker) {reasons.push(`Arquivo ${side.toUpperCase()} Bruker: não há scans individuais para a média por aquisição; forneça intensidade média validada na tabela`); return null;}
@@ -149,7 +173,18 @@ export function analyzePhoto(state: PhotoState, files: SpectrumFile[]) {
       if (fileWavelength && number(fileWavelength.replace(/\s*nm$/i, "")) !== wavelength) reasons.push(`Comprimento de onda ${side.toUpperCase()} do arquivo incompatível com o par; revise Files & metadata`);
       return extracted.absoluteIntensity;
     };
-    const off = extract("off", offFile), on = extract("on", onFile);
+    const controlFiles = photoOffIds(pair).map(id=>byId.get(id));
+    if (pair.off_files) {
+      const acquisitions = controlFiles.map(file=>file?.catalog?.input.rawSource?.sha256 || file?.thermo?.fingerprint || file?.id);
+      if(new Set(acquisitions).size !== acquisitions.length) reasons.push("Averages OFF duplicados da mesma aquisição; revise o grupo de controle");
+      const onAcquisition=onFile?.catalog?.input.rawSource?.sha256 || onFile?.thermo?.fingerprint || onFile?.id;
+      if(onAcquisition && acquisitions.includes(onAcquisition)) reasons.push("Mesma aquisição usada para OFF e ON");
+      if(controlFiles.some(file=>file && (!compatiblePhotoControl(pair,file,files) || file.id === pair.on_file))) reasons.push("Grupo OFF contém fonte incompatível com ON");
+    }
+    const offValues = pair.off_files?.length ? controlFiles.map(file=>extract("off",file)) : [extract("off",offFile)];
+    const off = offValues.every(value=>value!==null && value>0) ? offValues.reduce<number>((sum,value)=>sum+value!,0)/offValues.length : null;
+    const on = extract("on", onFile);
+    if(pair.off_files?.length) provenance.push(`OFF: média aritmética de ${offValues.length} aquisições, antes do log; IDs=${JSON.stringify(pair.off_files)}; intensidades=${JSON.stringify(offValues)}. SD da curva descreve ON, não inclui a incerteza compartilhada do OFF.`);
     for (const [name, value] of [["OFF", off], ["ON", on]] as const) if (value === null || value <= 0) reasons.push(`Intensidade ${name} ausente, zero ou negativa`);
     const ratio = off !== null && on !== null && off > 0 && on > 0 ? off / on : null;
     const y = ratio === null ? null : Number.isFinite(ratio) && ratio > 0 ? Math.log(ratio) : Math.log(off!) - Math.log(on!);
@@ -160,8 +195,8 @@ export function analyzePhoto(state: PhotoState, files: SpectrumFile[]) {
     const geometries = [...new Set([pair.geometry, offSetup.geometry, onSetup.geometry].filter(Boolean))];
     if ((offSetup.instrument && onSetup.instrument && offSetup.instrument !== onSetup.instrument) || (offSetup.geometry && onSetup.geometry && offSetup.geometry !== onSetup.geometry) || (offSetup.setup && onSetup.setup && offSetup.setup !== onSetup.setup)) reasons.push("Instrumentos ou configurações ópticas OFF/ON do catálogo incompatíveis; revise as fontes");
     if (offFile?.thermo && onFile?.thermo && (offFile.thermo.instrument !== onFile.thermo.instrument || offFile.thermo.channel !== onFile.thermo.channel)) reasons.push("Instrumentos ou canais OFF/ON incompatíveis");
-    const series = JSON.stringify([wavelength, time, instruments, geometries.join(" / "), offFile?.thermo?.channel ?? "", onFile?.thermo?.channel ?? "", ...(offSetup.setup || onSetup.setup ? [offSetup.setup, onSetup.setup] : [])]);
-    const label = `${wavelength ?? "?"} nm · ${time ?? "?"} s${instruments.length ? ` · ${instruments.join(" / ")}` : ""}${geometries.length ? ` · ${geometries.join(" / ")}` : ""}`;
+    const series = JSON.stringify([wavelength, time, instruments, geometries.join(" / "), offFile?.thermo?.channel ?? "", onFile?.thermo?.channel ?? "", ...(offSetup.setup || onSetup.setup ? [offSetup.setup, onSetup.setup] : []), ...(pair.referenceGroup ? [pair.referenceGroup] : [])]);
+    const label = pair.referenceGroup ? `${wavelength ?? "?"} nm · ${pair.referenceGroup}` : `${wavelength ?? "?"} nm · ${time ?? "?"} s${instruments.length ? ` · ${instruments.join(" / ")}` : ""}${geometries.length ? ` · ${geometries.join(" / ")}` : ""}`;
     return {pair, power: power === null ? null : power * (state.unit === "µW" ? 1000 : 1), time, wavelength, off, on, y, series, label: state.labels[series] || label, reasons, warnings, provenance: provenance.join("; "), offFile: offFile?.filename ?? "", onFile: onFile?.filename ?? "", acquisition: pair.on_file || pair.on_id};
   });
   const duplicate = (key: (r: PhotoResult) => string, message: string, warning = false) => {
@@ -170,8 +205,8 @@ export function analyzePhoto(state: PhotoState, files: SpectrumFile[]) {
     for (const group of groups.values()) if (group.length > 1) for (const r of group) (warning ? r.warnings : r.reasons).push(message);
   };
   duplicate(r => JSON.stringify([r.series, r.pair.condition, r.power, r.pair.replicate]), "Réplica duplicada na condição; revise a associação");
-  duplicate(r => r.acquisition, "Aquisição ON reutilizada; não é réplica independente");
-  duplicate(r => r.pair.on_id, "ID de aquisição ON reutilizado; não é réplica independente");
+  duplicate(r => r.acquisition ? JSON.stringify([r.acquisition,r.pair.referenceGroup ?? ""]) : "", "Aquisição ON reutilizada; não é réplica independente");
+  duplicate(r => r.pair.on_id ? JSON.stringify([r.pair.on_id,r.pair.referenceGroup ?? ""]) : "", "ID de aquisição ON reutilizado; não é réplica independente");
   duplicate(r => {
     const input = byId.get(r.pair.on_file)?.catalog?.input;
     const source = input?.rawSource?.sha256 || input?.replication.experimentalUnit;
@@ -212,11 +247,12 @@ export function photoTraces(analysis: PhotoAnalysis, state: PhotoState, colors: 
     const rows = analysis.results.filter(r => r.series === series && !r.reasons.length);
     if (!rows.length) return [];
     const base: PlotTrace = {type: "scatter", mode: "markers", x: rows.map(r => r.power!), y: rows.map(r => r.y!), name: label, text: rows.map(r => `${r.pair.condition} · réplica ${r.pair.replicate}`), hovertemplate: "%{text}<br>P=%{x}<br>ln(OFF/ON)=%{y}<extra></extra>", marker: {size: markerSize, color}, line: {width: lineWidth, color, shape: "linear"}, showlegend: legend, legendgroup: series, meta: {ionId: series}};
-    const traces = [base];
+    const traces = state.showIndividuals === false && state.means ? [] : [base];
     if (state.means) {
-      const means = analysis.means.filter(m => m.series === series);
+      const means = analysis.means.filter(m => m.series === series).sort((a,b)=>a.power-b.power);
+      if(state.showIndividuals === false) traces.push({...base,mode:"lines+markers",x:means.map(m=>m.power),y:means.map(m=>m.y),text:means.map(m=>`${m.condition}; n=${m.n} aquisições ON; OFF compartilhado`),error_y:{type:"data",array:means.map(m=>m.sd),visible:true,color,thickness:lineWidth,width:5}});
       // Plotly may coerce null errors to zero; n=1 must have no error-bar trace.
-      for (const group of [means.filter(m => m.sd === null), means.filter(m => m.sd !== null)]) {
+      for (const group of state.showIndividuals === false ? [] : [means.filter(m => m.sd === null), means.filter(m => m.sd !== null)]) {
         if (!group.length) continue;
         traces.push({...base, name: `${label} · média${group[0].sd === null ? "" : " ± SD"}`, x: group.map(m => m.power), y: group.map(m => m.y), text: group.map(m => `${m.condition}; n=${m.n}${m.n === 1 ? "; SD não estimado" : `; SD=${m.sd}`}`), marker: {size: markerSize * 1.5, color}, showlegend: false, ...(group[0].sd !== null ? {error_y: {type: "data" as const, array: group.map(m => m.sd), visible: true, color, thickness: lineWidth, width: 5}} : {})});
       }
@@ -227,11 +263,11 @@ export function photoTraces(analysis: PhotoAnalysis, state: PhotoState, colors: 
   });
 }
 export function photoCsv(analysis: PhotoAnalysis, state: PhotoState, delimiter = ",") {
-  const headers = [...photoFields, "pair_id", "original_json", "off_filename", "on_filename", "precursor_mz", "mz_half_window", "power_value", "power_unit", "time_s", "I_OFF", "I_ON", "ln_OFF_ON", "series", "status", "exclusion_reasons", "warnings", "n", "mean_Y", "sample_SD", "fit_used", "fit_basis", "fit_min", "fit_max", "force_origin", "slope", "intercept", "R2_centered", "fit_n", "fit_exclusion", "provenance", "calibration_json", "comparability_review"];
+  const headers = [...photoFields, "pair_id", "original_json", "off_filename", "on_filename", "precursor_mz", "mz_half_window", "power_value", "power_unit", "time_s", "I_OFF", "I_ON", "ln_OFF_ON", "series", "status", "exclusion_reasons", "warnings", "n", "mean_Y", "sample_SD", "fit_used", "fit_basis", "fit_min", "fit_max", "force_origin", "slope", "intercept", "R2_centered", "fit_n", "fit_exclusion", "provenance", "calibration_json", "comparability_review", "off_files_json", "reference_group", "exploratory"];
   const rows = analysis.results.map(r => {
     const mean = analysis.means.find(m => m.members.includes(r)), fit = analysis.fits.find(f => f.series === r.series)!;
     const fitUsed = state.fit && !r.reasons.length && fit.a !== null && r.power! >= fit.min! && r.power! <= fit.max!;
     return [...photoFields.map(k => r.pair[k]), r.pair.id, JSON.stringify(r.pair.original ?? {}), r.offFile, r.onFile, state.precursor, state.tolerance, r.power, state.unit, r.time, r.off, r.on, r.y, r.label, r.reasons.length ? "excluded" : "valid", r.reasons.join("; "), r.warnings.join("; "), mean?.n ?? null, mean?.y ?? null, mean?.sd ?? null, String(fitUsed), state.fitMeans ? "condition means" : "pairs", state.min, state.max, String(state.origin), state.fit ? fit.a : null, state.fit ? fit.b : null, state.fit ? fit.r2 : null, state.fit ? fit.n : 0, fitUsed ? "" : !state.fit ? "Fit disabled" : r.reasons.join("; ") || fit.reason || "Outside fit interval", r.provenance, r.pair.calibration ? JSON.stringify(r.pair.calibration) : ""];
   });
-  return [headers, ...rows.map((row, i) => [...row, analysis.results[i].pair.scaleReview ?? ""])].map(row => row.map(escapeCsvValue).join(delimiter)).join("\n");
+  return [headers, ...rows.map((row, i) => [...row, analysis.results[i].pair.scaleReview ?? "", JSON.stringify(photoOffIds(analysis.results[i].pair)), analysis.results[i].pair.referenceGroup ?? "", String(!!analysis.results[i].pair.exploratory)])].map(row => row.map(escapeCsvValue).join(delimiter)).join("\n");
 }
