@@ -78,7 +78,8 @@ export const inferMetadataFromFilename = (
     inferred.replicate = replicateMatch[1];
   }
 
-  const trailingReplicate = baseName.match(/_(\d+)$/);
+  // Catalog averaging suffixes identify a processing group, not a replicate.
+  const trailingReplicate = baseName.replace(/__mean_g\d+$/i, "").match(/_(\d+)$/);
   if (!replicateMatch && ledMatch && trailingReplicate) inferred.replicate = trailingReplicate[1];
   const suffixMz = baseName.match(/(?:^|_)(\d+(?:[p.]\d+)?)mz(?:_|$)/i);
   if (!parentIonMatch && suffixMz) inferred.parentIon = normalizeNumber(suffixMz[1]);

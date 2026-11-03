@@ -125,3 +125,51 @@ const highDynamic={...make(1),thermo:{...make(1).thermo,scans:[{timeSeconds:0,pe
 extractThermoIntensity(highDynamic,100,.5);
 assert.equal(extractThermoIntensity({...highDynamic,thermo:{...highDynamic.thermo,scanRanges:[{start:2,end:2}]}},100,.5).intensity,1);
 console.log('PASS: live range edits reuse per-scan extraction, tolerance invalidates cache, and small signals retain precision after excluded large peaks.');
+
+// Catalog names mix milliseconds and seconds and append an averaging group.
+// Physical times must agree in sorting, plotting, replicate pooling and CSV.
+const {axisNumericValue} = await load('utils/format');
+const {hasRepeatedPlotCoordinates, movingAverageByRow} = await load('utils/plot');
+const durations = ['1ms','10ms','30ms','50ms','100ms','200ms','500ms','1s','2s','5s','10s','20s','30s','60s'];
+const expectedMs = [1,10,30,50,100,200,500,1000,2000,5000,10000,20000,30000,60000];
+const timeFiles = durations.flatMap(duration => [1,2,3,4,5].map(replicate => {
+  const filename = `FMN_457_isolated_280LED_ON_acttime_${duration}_${replicate}__mean_g1.txt`;
+  const inferred = inferMetadataFromFilename(filename);
+  assert.equal(inferred.replicate, String(replicate));
+  assert.equal(inferred.acqTime, undefined);
+  return {id:filename,filename,metadata:{...emptyMetadata(),...inferred,experiment:'Synthetic independent replicates'},peaks:[{mz:100,intensity:replicate}],validLineCount:1,invalidLineCount:0,warnings:[]};
+}));
+const timeRows = processSpectra(timeFiles,ion,.5);
+const unchangedTimes = JSON.stringify(timeRows);
+const timeTrace = buildPlotData(timeRows,'activationTime','absolute',true,{...style,replicateMode:'individual'},.001)[0];
+assert.equal(timeTrace.mode,'markers');
+assert.equal(timeTrace.x.length,70);
+assert.deepEqual([...new Set(timeTrace.x)],expectedMs.map(x=>x/1000));
+assert.equal(hasRepeatedPlotCoordinates(timeRows,'activationTime'),true);
+const means = aggregateReplicates(timeRows,'activationTime','absolute');
+assert.deepEqual(means.warnings,[]);
+assert.equal(means.rows.length,14);
+assert.ok(means.rows.every(row=>row.statistics.n===5 && row.absoluteIntensity===3));
+const meanTrace = buildPlotData(means.rows,'activationTime','absolute',true,style,.001)[0];
+assert.equal(meanTrace.mode,'lines+markers');
+assert.deepEqual(meanTrace.x,expectedMs.map(x=>x/1000));
+assert.ok(meanTrace.error_y.array.every(sd=>Math.abs(sd-Math.sqrt(2.5))<1e-12));
+assert.match(plotRowsToCsv(timeRows,'activationTime','absolute',.001,'Activation time (s)'),/Activation time \(s\),30,Absolute intensity,1,/);
+const equivalent = [timeRows[0],{...timeRows[1],metadata:{...timeRows[1].metadata,activationTime:'0.001 s'}}];
+assert.equal(aggregateReplicates(equivalent,'activationTime','absolute').rows[0].statistics.n,2);
+assert.equal(buildPlotData(equivalent,'activationTime','absolute',true,{...style,curveMode:'movingAverage'})[0].mode,'markers');
+assert.equal(movingAverageByRow(equivalent,'activationTime','absolute',3).size,0);
+assert.match(plotRowsToCsv(equivalent,'activationTime','absolute',1,undefined,',',3),/Not applied: repeated x values/);
+for(const axis of ['acqTime','activationTime']) {
+  assert.equal(axisNumericValue('30 s',axis),30000);
+  assert.equal(axisNumericValue('500 ms',axis),500);
+  assert.equal(axisNumericValue('1 min',axis),60000);
+  assert.equal(axisNumericValue('1.5e-3 s',axis),1.5);
+  assert.equal(axisNumericValue('25',axis),25);
+  for(const invalid of ['', 'unknown', '20 bananas', '-1 s']) assert.equal(axisNumericValue(invalid,axis),null);
+}
+assert.equal(axisNumericValue('500 ms','retentionTime'),.5);
+assert.equal(axisNumericValue('1 min','retentionTime'),60);
+assert.equal(inferMetadataFromFilename('FMN_280LED_ON__mean_g5.txt').replicate,undefined);
+assert.equal(JSON.stringify(timeRows),unchangedTimes);
+console.log('PASS: 70 mixed-unit catalog filenames, correct 0.001–60 s order, replicate suffixes, mean/SD, equivalent-time pooling, duplicate points without connecting/smoothing, CSV and source preservation.');

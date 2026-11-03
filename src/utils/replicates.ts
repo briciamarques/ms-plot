@@ -1,5 +1,6 @@
 import { metadataFields, plotYValue } from "../types";
 import type { ProcessedRow, XAxisKey, YMode } from "../types";
+import { axisNumericValue, isTimeAxis } from "./format";
 
 export type ReplicateMode = "individual" | "sd" | "sem";
 
@@ -12,7 +13,9 @@ export function aggregateReplicates(rows: ProcessedRow[], axis: XAxisKey, mode: 
       .map(f => [f.key, (row.metadata[f.key] ?? "").trim()]);
     const series = JSON.stringify([row.ionId, row.acquisitionKey ?? "", metadata]);
     const rawX = row.metadata[axis].trim();
-    const x = rawX !== "" && Number.isFinite(Number(rawX)) ? String(Number(rawX)) : rawX;
+    const numericX = isTimeAxis(axis) ? axisNumericValue(rawX, axis)
+      : rawX !== "" && Number.isFinite(Number(rawX)) ? Number(rawX) : null;
+    const x = numericX === null ? rawX : String(numericX);
     // Current drives calibrated power: connect different currents in one series,
     // but do not pool distinct currents that happen to have identical powers.
     const key = JSON.stringify([series, x, ...(axis === "opticalPower" ? [row.metadata.current.trim()] : [])]);

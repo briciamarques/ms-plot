@@ -13,6 +13,7 @@ import { fitExportPreview } from "../utils/preview";
 import { axisRange, axisRangeLayout, numericBounds } from "../utils/axisRange";
 import {
   buildPlotData,
+  hasRepeatedPlotCoordinates,
   rowsForPlotAxis,
   legendGeometry,
   insideLegendColumns,
@@ -26,7 +27,7 @@ import { safeProjectFilename } from "../utils/project";
 import { PlotToolbar } from "./PlotToolbar";
 import { SavedPowerControls } from "./SavedPowerControls";
 import { FitResults } from "./FitResults";
-import { readLegendMzDecimals } from "../utils/format";
+import { isTimeAxis, readLegendMzDecimals } from "../utils/format";
 
 import { readPlotSetting, type PlotBuilderProps, type PlotTab, type PlotInteraction, type InteractivePlotElement, type PlotFont, type LineShape, type CurveMode, type TickFormat, type XValueScale, type JournalPresetKey, type FigureContent, type RasterDpi, type PlotStyleSettings, type SavedPlotStyle, MM_PER_INCH, STYLE_PRESETS_STORAGE_KEY, loadSavedPlotStyles, journalPresets, figureContentOptions, rasterDpiOptions, pointsToPixels, pixelsToPoints, pixelsFromMm, mmFromPixels, formatDecimal, axisLabel, defaultXAxisUnit, axisTitleWithUnit, tickFormatValue, normalizeHexColor, type ColorControlProps, ColorControl } from "./plot/controls";
 
@@ -53,6 +54,7 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
   const [replicateMode, setReplicateMode] = useState<ReplicateMode>(() => ["sd", "sem"].includes(String(initialSettings.replicateMode)) ? initialSettings.replicateMode as ReplicateMode : "individual");
   const aggregation = useMemo(() => replicateMode === "individual" ? { rows: axisRows, warnings: [] } : aggregateReplicates(axisRows, xAxis, yMode), [axisRows, xAxis, yMode, replicateMode]);
   const rows = aggregation.rows;
+  const repeatedX = useMemo(() => hasRepeatedPlotCoordinates(rows, xAxis), [rows, xAxis]);
   const omittedAxisFiles = useMemo(() => {
     const visible = new Set(axisRows.map(row => row.id));
     return new Set(sourceRows.filter(row => !visible.has(row.id)).map(row => row.fileId)).size;
@@ -735,9 +737,10 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
   const updateXAxis = (nextAxis: XAxisKey) => {
     setXAxis(nextAxis);
     setXTitle(axisLabel(nextAxis));
-    setXUnit(defaultXAxisUnit(nextAxis));
-    setXValueScale("raw");
-    setXValueMultiplier(1);
+    const duration = nextAxis === "activationTime" || nextAxis === "acqTime";
+    setXUnit(duration ? "s" : defaultXAxisUnit(nextAxis));
+    setXValueScale(duration ? "msToSeconds" : "raw");
+    setXValueMultiplier(duration ? 0.001 : 1);
     setXMin("");
     setXMax("");
   };
@@ -757,13 +760,13 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
       setXUnit("s");
     }
     if (nextScale === "secondsToMinutes") {
-      setXValueMultiplier(1 / 60);
+      setXValueMultiplier(xAxis === "activationTime" || xAxis === "acqTime" ? 1 / 60000 : 1 / 60);
       setXUnit("min");
     }
   };
 
   const applyIrradiationTimeAxis = () => {
-    setXAxis("acqTime");
+    setXAxis(sourceRows.some(row => row.metadata.activationTime.trim()) ? "activationTime" : "acqTime");
     setXTitle("Irradiation Time");
     setXUnit("s");
     setXTickFormat("plain");
@@ -1005,6 +1008,8 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
                 <option value="individual">Individual files</option><option value="sd">Mean ± sample SD</option><option value="sem">Mean ± SEM</option>
               </select></label>
               {replicateMode !== "individual" && <p>Equal weight per file. Normalization is applied per file before averaging. Groups match the other metadata and spectrum type; edit Experiment group to separate batches. Missing or repeated replicate IDs are not pooled.</p>}
+              {repeatedX && (curveMode === "connect" || curveMode === "movingAverage") && <p role="status">Multiple files share the same x value. They are shown as individual points, without connecting or smoothing repetitions. For independent replicates, fill Replicate and Experiment group, then choose Mean ± sample SD.</p>}
+              {isTimeAxis(xAxis) && <p>Explicit time units are converted before plotting. Unitless values use {xAxis === "retentionTime" ? "seconds" : "milliseconds"}. {omittedAxisFiles > 0 ? `${omittedAxisFiles} files with missing or invalid times are omitted.` : ""}</p>}
               {aggregation.warnings.length > 0 && <details open><summary>Replicate warnings ({aggregation.warnings.length})</summary>{aggregation.warnings.map(warning => <p key={warning}>{warning}</p>)}</details>}
               {(xAxis === "current" || xAxis === "voltage") && omittedAxisFiles > 0 && <p role="status">{omittedAxisFiles} files without a numeric {xAxis} are omitted. LED OFF stays in Data; assign a reference coordinate explicitly if you want to plot it.</p>}
               {xAxis === "opticalPower" && <p role="status">Optical power uses the saved measurements. {omittedAxisFiles > 0 ? `${omittedAxisFiles} files without matching calibration are omitted; check their current and wavelength.` : "Values use the active calibration and background choice."} Vertical error bars describe ion intensity, not power uncertainty.</p>}
@@ -1101,9 +1106,9 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
                       updateXValueScale(event.target.value as XValueScale)
                     }
                   >
-                    <option value="raw">Raw values</option>
+                    <option value="raw">{isTimeAxis(xAxis) ? `Base units (${defaultXAxisUnit(xAxis)})` : "Raw values"}</option>
                     <option value="msToSeconds">ms to s</option>
-                    <option value="secondsToMinutes">s to min</option>
+                    <option value="secondsToMinutes">{xAxis === "activationTime" || xAxis === "acqTime" ? "ms to min" : "s to min"}</option>
                     <option value="custom">Custom multiplier</option>
                   </select>
                 </label>

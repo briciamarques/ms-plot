@@ -1,6 +1,6 @@
 import { plotYValue } from "../types";
 import type { LegendPosition, ProcessedRow, XAxisKey, YMode } from "../types";
-import { formatLegendMz, type LegendMzDecimals } from "./format";
+import { axisNumericValue, formatLegendMz, isTimeAxis, plotAxisValue, type LegendMzDecimals } from "./format";
 import { paletteColor, trmsColors, type ColorPaletteId } from "./colorPalettes";
 import { normalizeIntensities } from "./processing";
 
@@ -76,6 +76,10 @@ const getSortableNumber = (value: string): number | null => {
 };
 
 export const rowsForPlotAxis = (rows: ProcessedRow[], axis: XAxisKey): ProcessedRow[] => {
+  if (isTimeAxis(axis)) {
+    const valid = rows.filter(row => axisNumericValue(row.metadata[axis] ?? "", axis) !== null);
+    return valid;
+  }
   if (rows.some(row => row.statistics)) return rows;
   if (axis === "current" || axis === "voltage" || axis === "opticalPower") return normalizeIntensities(rows.filter(row => (row.metadata[axis] ?? "").trim() !== "" && Number.isFinite(Number(row.metadata[axis]))));
   if (axis !== "wavelength") return rows;
@@ -87,24 +91,12 @@ export const rowsForPlotAxis = (rows: ProcessedRow[], axis: XAxisKey): Processed
   }));
 };
 
-const getPlotXValue = (
-  value: string,
-  numericMultiplier = 1,
-): number | string => {
-  const sortableNumber = getSortableNumber(value);
-  if (sortableNumber !== null) {
-    return sortableNumber * numericMultiplier;
-  }
-
-  return value.trim() || "(blank)";
-};
-
 const sortRowsByAxis = (rows: ProcessedRow[], axis: XAxisKey): ProcessedRow[] =>
   [...rows].sort((a, b) => {
     const rawA = getAxisRawValue(a, axis);
     const rawB = getAxisRawValue(b, axis);
-    const numericA = getSortableNumber(rawA);
-    const numericB = getSortableNumber(rawB);
+    const numericA = axisNumericValue(rawA, axis);
+    const numericB = axisNumericValue(rawB, axis);
 
     if (numericA !== null && numericB !== null) {
       return numericA - numericB;
@@ -591,9 +583,18 @@ const groupRows = (rows: ProcessedRow[]) => {
   return groups;
 };
 
+const repeatedCoordinates = (rows: ProcessedRow[], axis: XAxisKey): boolean => {
+  const values = rows.map(row => plotAxisValue(getAxisRawValue(row, axis), axis));
+  return new Set(values).size < values.length;
+};
+
+export const hasRepeatedPlotCoordinates = (rows: ProcessedRow[], axis: XAxisKey): boolean =>
+  [...groupRows(rowsForPlotAxis(rows, axis)).values()].some(group => repeatedCoordinates(group, axis));
+
 export const movingAverageByRow = (rows: ProcessedRow[], axis: XAxisKey, mode: YMode, window = 5): Map<string, number> => {
   const result = new Map<string, number>();
   groupRows(rowsForPlotAxis(rows, axis)).forEach(group => {
+    if (repeatedCoordinates(group, axis)) return;
     const sorted = sortRowsByAxis(group, axis);
     const smoothed = movingAverageValues(sorted.map(row => plotYValue(row, mode)), window);
     sorted.forEach((row, index) => result.set(row.id, smoothed[index]));
@@ -623,7 +624,7 @@ export const buildPlotData = (
         style.colors[firstRow.ionId] ??
         paletteColor(style.colorPalette ?? "trms", firstRow.targetMz, ionIndexes.get(firstRow.ionId) ?? 0);
       const xValues = sortedRows.map((row) =>
-        getPlotXValue(getAxisRawValue(row, axis), xValueMultiplier),
+        plotAxisValue(getAxisRawValue(row, axis), axis, xValueMultiplier),
       );
       const yValues = sortedRows.map((row) =>
         plotYValue(row, yMode),
@@ -633,7 +634,8 @@ export const buildPlotData = (
         error_y: { type: "data" as const, array: sortedRows.map(row => row.statistics?.[style.replicateMode === "sem" ? "sem" : "sd"] ?? null), visible: true, color, thickness: Math.max(1, style.lineWidth / 2), width: 4 },
       } : {};
       const pointText = sortedRows.map(row => row.statistics ? `${row.metadata.condition}; n=${row.statistics.n}; ${style.replicateMode?.toUpperCase()}=${row.statistics[style.replicateMode === "sem" ? "sem" : "sd"] ?? "unavailable"}<br>${row.filename}` : row.filename);
-      if (style.curveMode === "movingAverage") {
+      const repeatedX = new Set(xValues).size < xValues.length;
+      if (style.curveMode === "movingAverage" && !repeatedX) {
         const common = {
           x: xValues, type: "scatter" as const, name, legendgroup: groupId, meta: { ionId: firstRow.ionId },
           text: pointText,
@@ -703,7 +705,7 @@ export const buildPlotData = (
           x: xValues,
           y: yValues,
           type: "scatter",
-          mode: "lines+markers",
+          mode: repeatedX ? "markers" : "lines+markers",
           ...errorBars,
           meta: { ionId: firstRow.ionId }, legendgroup: groupId,
           name,

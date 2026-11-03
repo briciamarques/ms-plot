@@ -2,6 +2,7 @@ import { plotYValue } from "../types";
 import type { ProcessedRow, XAxisKey, YMode } from "../types";
 import { xAxisOptions, yModeOptions } from "../types";
 import { movingAverageByRow, rowsForPlotAxis } from "./plot";
+import { plotAxisValue } from "./format";
 
 export const escapeCsvValue = (value: string | number | null): string => {
   const stringValue = value === null ? "" : String(value);
@@ -69,29 +70,6 @@ const axisLabel = (axis: XAxisKey): string =>
 const yModeLabel = (mode: YMode): string =>
   yModeOptions.find((option) => option.key === mode)?.label ?? mode;
 
-const numericPrefix = (value: string): number | null => {
-  const match = value.trim().match(/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/i);
-  if (!match) {
-    return null;
-  }
-
-  const parsedValue = Number(match[0]);
-  return Number.isFinite(parsedValue) ? parsedValue : null;
-};
-
-const plotAxisValue = (
-  value: string,
-  numericMultiplier: number,
-): string | number => {
-  const numericValue = numericPrefix(value);
-
-  if (numericValue === null) {
-    return value;
-  }
-
-  return numericValue * numericMultiplier;
-};
-
 export const plotRowsToCsv = (
   rows: ProcessedRow[],
   xAxis: XAxisKey,
@@ -132,7 +110,7 @@ export const plotRowsToCsv = (
 
   const csvRows = rows.map((row) => [
     xAxisDisplayLabel ?? axisLabel(xAxis),
-    plotAxisValue(row.metadata[xAxis] ?? "", xValueMultiplier),
+    plotAxisValue(row.metadata[xAxis] ?? "", xAxis, xValueMultiplier),
     yModeLabel(yMode),
     plotYValue(row, yMode),
     row.filename,
@@ -155,7 +133,7 @@ export const plotRowsToCsv = (
     row.statistics?.n ?? 1, row.statistics?.sd ?? null, row.statistics?.sem ?? null, row.statistics?.files.join("; ") ?? row.filename,
     row.metadata.opticalPower ?? "", row.metadata.powerCalibration ?? "",
     row.thermoScanSelections ? JSON.stringify(row.thermoScanSelections) : "",
-    ...(smoothed ? [`Centered moving average (${movingAverageWindow} points; symmetric shrinking endpoints)`, smoothed.get(row.id) ?? null] : []),
+    ...(smoothed ? [smoothed.has(row.id) ? `Centered moving average (${movingAverageWindow} points; symmetric shrinking endpoints)` : "Not applied: repeated x values", smoothed.get(row.id) ?? null] : []),
   ]);
 
   return [headers, ...csvRows]
