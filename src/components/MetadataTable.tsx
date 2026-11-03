@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import type { MetadataField, SpectrumFile, SpectrumMetadata } from "../types";
 import { metadataFields } from "../types";
 import { TableTools } from "./TableTools";
+import { inferMetadataFromFilename } from "../utils/filenameMetadata";
 
 type MetadataTableProps = {
   files: SpectrumFile[];
@@ -41,7 +42,7 @@ export function MetadataTable({
   const [warningOnly, setWarningOnly] = useState(false);
   const [sort, setSort] = useState("import");
   const [visibleFieldKeys, setVisibleFieldKeys] = useState<MetadataField[]>(
-    ["compound", "condition", "replicate", ...(files.some(file => file.thermo) ? ["current", "voltage"] as MetadataField[] : files.some(file => file.bruker) ? ["retentionTime", "segment", "wavelength"] as MetadataField[] : ["acqTime"] as MetadataField[])],
+    ["compound", "condition", "replicate", ...(files.some(file => file.metadata.activationTime.trim()) ? ["activationTime"] as MetadataField[] : []), ...(files.some(file => file.thermo) ? ["current", "voltage"] as MetadataField[] : files.some(file => file.bruker) ? ["retentionTime", "segment", "wavelength"] as MetadataField[] : ["acqTime"] as MetadataField[])],
   );
   const matchingFiles = useMemo(() => {
     const term = query.toLocaleLowerCase();
@@ -115,7 +116,16 @@ export function MetadataTable({
         <button
           type="button"
           className="secondary-button"
-          onClick={onInferFilenameMetadata}
+          onClick={() => {
+            onInferFilenameMetadata();
+            if (files.some(file =>
+              (!selectedIds.size || selectedIds.has(file.id)) &&
+              inferMetadataFromFilename(file.filename).activationTime,
+            )) {
+              setVisibleFieldKeys(fields => fields.includes("activationTime")
+                ? fields : [...fields, "activationTime"]);
+            }
+          }}
           disabled={files.length === 0}
         >
           <ScanSearch size={16} aria-hidden="true" />
