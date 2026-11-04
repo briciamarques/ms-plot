@@ -23,6 +23,7 @@ import {
   trmsPlotDefaults,
   traceName,
 } from "../utils/plot";
+import { ionColors } from "../utils/ionAppearance";
 import { colorPalettes, paletteColor, readColorPalette, type ColorPaletteId } from "../utils/colorPalettes";
 import type { SpectrumFile } from "../types";
 import { safeProjectFilename } from "../utils/project";
@@ -33,7 +34,7 @@ import { isTimeAxis, readLegendMzDecimals } from "../utils/format";
 
 import { readPlotSetting, type PlotBuilderProps, type PlotTab, type PlotInteraction, type InteractivePlotElement, type PlotFont, type LineShape, type CurveMode, type TickFormat, type XValueScale, type JournalPresetKey, type FigureContent, type RasterDpi, type PlotStyleSettings, type SavedPlotStyle, MM_PER_INCH, STYLE_PRESETS_STORAGE_KEY, loadSavedPlotStyles, journalPresets, figureContentOptions, rasterDpiOptions, pointsToPixels, pixelsToPoints, pixelsFromMm, mmFromPixels, formatDecimal, axisLabel, defaultXAxisUnit, axisTitleWithUnit, tickFormatValue, normalizeHexColor, type ColorControlProps, ColorControl } from "./plot/controls";
 
-export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isActive = true, expanded, onExpandedChange, initialSettings = {}, settingsRef, onSettingsChange, projectName, files, photoFiles = files, processingBusy = false, powerCalibration, onPowerCalibrationChange }: PlotBuilderProps) {
+export function PlotBuilder({ ions, getProject, onCatalogExport, rows: sourceRows, isActive = true, expanded, onExpandedChange, initialSettings = {}, settingsRef, onSettingsChange, projectName, files, photoFiles = files, processingBusy = false, powerCalibration, onPowerCalibrationChange }: PlotBuilderProps) {
   const [analysisMode, setAnalysisMode] = useState(() => initialSettings.analysisMode === "photodepletion" ? "photodepletion" : "intensity");
   const isPhoto = analysisMode === "photodepletion";
   const [photo, setPhoto] = useState(() => {
@@ -74,7 +75,10 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
   const [showTitle, setShowTitle] = useState(() => readPlotSetting(initialSettings, "showTitle", defaultPlotAppearance.showTitle));
   const [xTitle, setXTitle] = useState(() => readPlotSetting(initialSettings, "xTitle", axisLabel("acqTime")));
   const [xUnit, setXUnit] = useState(() => readPlotSetting(initialSettings, "xUnit", "ms"));
-  const [yTitle, setYTitle] = useState(() => readPlotSetting(initialSettings, "yTitle", yMode === "absolute" ? "Absolute intensity" : yMode === "selectedSum" ? "Share of selected ions" : "Intensity / own maximum"));
+  const [yTitle, setYTitle] = useState(() => {
+    const saved = readPlotSetting<string>(initialSettings, "yTitle", yMode === "absolute" ? "Absolute intensity" : yMode === "selectedSum" ? "Relative Intensity" : "Intensity / own maximum");
+    return yMode === "selectedSum" && saved === "Share of selected ions" ? "Relative Intensity" : saved;
+  });
   const [yUnit, setYUnit] = useState(() => readPlotSetting(initialSettings, "yUnit", yMode !== "absolute" ? "%" : ""));
   const [xValueScale, setXValueScale] = useState<XValueScale>(() => readPlotSetting(initialSettings, "xValueScale", "raw"));
   const [xValueMultiplier, setXValueMultiplier] = useState(() => readPlotSetting(initialSettings, "xValueMultiplier", 1));
@@ -124,6 +128,8 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
   const [paperBackground, setPaperBackground] = useState(() => readPlotSetting(initialSettings, "paperBackground", "#ffffff"));
   const [traceColors, setTraceColors] = useState<Record<string, string>>(() => readPlotSetting(initialSettings, "traceColors", {}));
   const [colorPalette, setColorPalette] = useState<ColorPaletteId>(() => readColorPalette(initialSettings.colorPalette));
+  const resolvedIonColors = useMemo(() => ionColors(ions, colorPalette, traceColors), [ions, colorPalette, traceColors]);
+  const hiddenIonIds = useMemo(() => new Set(ions.filter(ion => ion.hidden).map(ion => ion.id)), [ions]);
   const [savedPlotStyles, setSavedPlotStyles] =
     useState<SavedPlotStyle[]>(loadSavedPlotStyles);
   const [stylePresetName, setStylePresetName] = useState("");
@@ -150,20 +156,21 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
         options.set(row.ionId, {
           ionId: row.ionId,
           name: traceName(row.targetMz, row.label),
-          fallbackColor: paletteColor(colorPalette, row.targetMz, options.size),
+          fallbackColor: resolvedIonColors[row.ionId] ?? paletteColor(colorPalette, row.targetMz, options.size),
         });
       }
     });
 
     return Array.from(options.values());
-  }, [rows, colorPalette, isPhoto, photoAnalysis]);
+  }, [rows, colorPalette, isPhoto, photoAnalysis, resolvedIonColors]);
 
   const plotData = useMemo(
     () =>
       isPhoto ? photoTraces(photoAnalysis, photo, traceColors, colorPalette, markerSize, lineWidth, shouldShowLegend) : buildPlotData(rows, xAxis, yMode, shouldShowLegend, {
         legendMzDecimals,
         replicateMode,
-        colors: traceColors,
+        colors: resolvedIonColors,
+        hiddenIonIds,
         colorPalette,
         lineWidth,
         markerSize,
@@ -174,7 +181,7 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
         highlightedIonId: highlightOnClick ? highlightedIonId : undefined,
       }, xValueMultiplier),
     [
-      isPhoto, photoAnalysis, photo,
+      isPhoto, photoAnalysis, photo, resolvedIonColors, hiddenIonIds,
       legendMzDecimals,
       replicateMode,
       curveMode,
@@ -1036,7 +1043,7 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
                       // A percentage range would clip an absolute-intensity plot.
                       setYMin("");
                       setYMax("");
-                      setYTitle(mode === "absolute" ? "Absolute intensity" : mode === "selectedSum" ? "Share of selected ions" : "Intensity / own maximum");
+                      setYTitle(mode === "absolute" ? "Absolute intensity" : mode === "selectedSum" ? "Relative Intensity" : "Intensity / own maximum");
                       setYUnit(mode !== "absolute" ? "%" : "");
                     }}
                   >
@@ -1047,7 +1054,7 @@ export function PlotBuilder({ getProject, onCatalogExport, rows: sourceRows, isA
                     ))}
                   </select>
                 </label>
-                <p className="fit-guidance">{yMode === "selectedSum" ? "For each file/segment: 100 × ion intensity / sum of all targets in Ions. Changing the ion list changes the percentages. Hiding a curve in the legend does not change the denominator. An all-zero segment is shown as zero." : yMode === "relative" ? "Each ion is divided by its own maximum across the plotted files. This compares temporal profiles, not relative abundance between ions." : "Extracted intensity before normalization."}</p>
+                <p className="fit-guidance">{yMode === "selectedSum" ? "For each file/segment: 100 × ion intensity / sum of all targets in Ions. Changing the ion list changes the percentages. Hiding an ion in Ions or in the legend does not change the denominator. An all-zero segment is shown as zero." : yMode === "relative" ? "Each ion is divided by its own maximum across the plotted files. This compares temporal profiles, not relative abundance between ions." : "Extracted intensity before normalization."}</p>
 
 </div>{xAxis === "opticalPower" && <p>Potência estimada pela calibração salva de cada wavelength; correntes intermediárias usam interpolação linear. O alinhamento do experimento deve corresponder à calibração.</p>}<p>{errorBars.mode === "acquisition-sd" ? "Curvas: média por condição ± SD entre aquisições." : errorBars.mode === "individual" ? "Pontos individuais; ajuste em Error bars para mostrar médias." : "Média e SEM das unidades revisadas."}</p></section>}
             {!isPhoto && replicateMode !== "individual" && <p role="status">This saved project uses legacy replicate settings. Choose a mode in Error bars to switch to the editable acquisition groups.</p>}

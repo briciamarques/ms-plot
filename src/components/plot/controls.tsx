@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react";
-import type {LegendPosition, ProcessedRow, XAxisKey, SpectrumFile, ProjectSnapshot, CatalogContext} from "../../types";
+import type {LegendPosition, ProcessedRow, XAxisKey, SpectrumFile, ProjectSnapshot, CatalogContext, IonTarget} from "../../types";
 import {xAxisOptions} from "../../types";
 import type {ColorPaletteId} from "../../utils/colorPalettes";
 import type {LegendMzDecimals} from "../../utils/format";
@@ -14,6 +14,7 @@ export function readPlotSetting<T>(settings: Record<string, unknown>, key: strin
 }
 
 export type PlotBuilderProps = {
+  ions: IonTarget[];
   rows: ProcessedRow[];
   isActive?: boolean;
   expanded: boolean;

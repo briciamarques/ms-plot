@@ -84,6 +84,8 @@ export type IonTarget = {
   id: string;
   targetMz: string;
   label: string;
+  colorIndex?: number;
+  hidden?: boolean;
 };
 
 export type NumericIonTarget = {

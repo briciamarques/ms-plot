@@ -4,7 +4,7 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import ts from 'typescript';
 const output = path.resolve('node_modules/.tmp/workspace-tests');
-for (const name of ['types','utils/id','utils/powerCalibration','utils/project','utils/recovery','utils/ions','utils/parser','hooks/useProjectSession','utils/plot','utils/thermoScans','utils/processing','utils/bruker','utils/colorPalettes','utils/format','utils/filenameMetadata']) {
+for (const name of ['types','utils/id','utils/powerCalibration','utils/project','utils/recovery','utils/ions','utils/ionAppearance','utils/parser','hooks/useProjectSession','utils/plot','utils/thermoScans','utils/processing','utils/bruker','utils/colorPalettes','utils/format','utils/filenameMetadata']) {
   const code = ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), {compilerOptions: {target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ES2020}}).outputText.replace(/from "(\.[^"]+)"/g, 'from "$1.mjs"');
   const target = path.join(output, `${name}.mjs`); fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target, code);
 }
@@ -85,3 +85,38 @@ assert.equal(projectReducer(freshHistory, {type: 'undo'}).current, previous);
 assert.equal(projectReducer(projectReducer(freshHistory, {type: 'undo'}), {type: 'redo'}).current, emptyProject);
 assert.notEqual(createEmptyProject().files, emptyProject.files);
 console.log('PASS: new project clears data and settings, preserves the previous project for undo, and can be redone.');
+
+// Colors belong to an ion, not its current position in the list.
+const {withIonColorIndices, reconcileIonTargets, ionColors} = await load('utils/ionAppearance');
+const originalIons = [457, 439, 421].map((mass, i) => ({id: `stable-${i}`, targetMz: String(mass), label: ''}));
+const assignedIons = withIonColorIndices(originalIons);
+const colorsBefore = ionColors(assignedIons, 'trms', {});
+const withoutParent = reconcileIonTargets(originalIons, originalIons.slice(1));
+assert.deepEqual(ionColors(withoutParent, 'trms', {}), Object.fromEntries(Object.entries(colorsBefore).slice(1)));
+const reloadedList = reconcileIonTargets(assignedIons, [421, 439].map(mass => ({id: `new-${mass}`, targetMz: String(mass), label: 'reloaded'})));
+assert.deepEqual(reloadedList.map(ion => ion.id), ['stable-2', 'stable-1']);
+assert.equal(ionColors(reloadedList, 'trms', {'stable-1': '#123456'})['stable-1'], '#123456');
+const hiddenIons = reconcileIonTargets(assignedIons, assignedIons.map((ion, i) => ({...ion, hidden: i === 0})));
+const appearanceProject = {...project, ions: hiddenIons, plotSettings: {traceColors: {'stable-1': '#123456'}}};
+const reopenedAppearance = parseProjectSnapshot(JSON.stringify(appearanceProject));
+assert.deepEqual(reopenedAppearance.ions, hiddenIons);
+assert.equal(reopenedAppearance.plotSettings.traceColors['stable-1'], '#123456');
+for (const invalid of [{hidden: 'false'}, {colorIndex: -1}, {colorIndex: 1.5}]) {
+  assert.throws(() => parseProjectSnapshot(JSON.stringify({...project, ions: [{...assignedIons[0], ...invalid}]})), /Invalid project/);
+}
+const appearanceFiles = [1, 2, 3].map(x => ({...file, id: `appearance-${x}`, metadata: {...emptyMetadata(), current: String(x)},
+  peaks: [{mz: 457, intensity: 70}, {mz: 439, intensity: 20}, {mz: 421, intensity: 10}]}));
+const appearanceRows = processSpectra(appearanceFiles, numericTargets(assignedIons), .1);
+const appearanceStyle = {colors: colorsBefore, lineWidth: 2, markerSize: 5, lineShape: 'linear', curveMode: 'connect', polynomialDegree: 2};
+for (const curveMode of ['connect', 'movingAverage', 'polynomial']) {
+  const before = buildPlotData(appearanceRows, 'current', 'selectedSum', true, {...appearanceStyle, curveMode});
+  const after = buildPlotData(appearanceRows, 'current', 'selectedSum', true, {...appearanceStyle, curveMode, hiddenIonIds: new Set(['stable-0'])});
+  assert.ok(after.every(trace => trace.meta.ionId !== 'stable-0'));
+  assert.deepEqual(after.map(({legendrank, ...trace}) => trace), before.filter(trace => trace.meta.ionId !== 'stable-0').map(({legendrank, ...trace}) => trace));
+}
+const removedRows = processSpectra(appearanceFiles, numericTargets(withoutParent), .1);
+const removedPlot = buildPlotData(removedRows, 'current', 'selectedSum', true, {...appearanceStyle, colors: ionColors(withoutParent, 'trms', {})});
+assert.equal(removedPlot[0].line.color, colorsBefore['stable-1']);
+assert.ok(Math.abs(removedPlot[0].y[0] - 100 * 20 / 30) < 1e-10);
+assert.equal(buildPlotData(appearanceRows, 'current', 'selectedSum', true, {...appearanceStyle, hiddenIonIds: new Set(assignedIons.map(ion => ion.id))}).length, 0);
+console.log('PASS: stable ion colors after removal/reorder/list reload; custom colors and visibility survive project restore; hiding preserves percentages and fits while removal recalculates the denominator.');

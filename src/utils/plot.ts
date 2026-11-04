@@ -43,6 +43,7 @@ export type PlotTrace = {
 export type TraceStyleOptions = {
   legendMzDecimals?: LegendMzDecimals;
   colors: Record<string, string>;
+  hiddenIonIds?: ReadonlySet<string>;
   colorPalette?: ColorPaletteId;
   lineWidth: number;
   markerSize: number;
@@ -611,6 +612,8 @@ export const buildPlotData = (
   xValueMultiplier = 1,
 ): PlotTrace[] => {
   rows = rowsForPlotAxis(rows, axis);
+  // Hide only after normalization: hidden targets still belong to the selected-ion sum.
+  rows = rows.filter(row => !style.hiddenIonIds?.has(row.ionId));
   const rowsByIon = groupRows(rows);
   const ionIndexes = new Map([...new Set(rows.map(row => row.ionId))].map((id, index) => [id, index]));
   const highlightedIonId = rows.some(row => row.ionId === style.highlightedIonId) ? style.highlightedIonId : undefined;

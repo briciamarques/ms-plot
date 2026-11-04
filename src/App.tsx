@@ -20,6 +20,8 @@ import { downloadTextFile } from "./utils/csv";
 import { fillBlankMetadataFromSources, inferMetadataFromFilename } from "./utils/filenameMetadata";
 import { suggestIonTargets } from "./utils/ionSuggestions";
 import { numericTargets } from "./utils/ions";
+import { ionColors, reconcileIonTargets, withIonColorIndices } from "./utils/ionAppearance";
+import { readColorPalette } from "./utils/colorPalettes";
 import { readTxt } from "./utils/readTxt";
 import { useProjectSession } from "./hooks/useProjectSession";
 import { useProcessedRows } from "./hooks/useProcessedRows";
@@ -44,7 +46,9 @@ const initial = withSavedPowerCalibration({...createProjectSnapshot("pd-ms-proje
 function App() {
   const session = useProjectSession(initial, withSavedPowerCalibration);
   const {project, patch, currentRef} = session;
-  const {files, ions, tolerance, projectName, plotSelectedOnly = false} = project;
+  const {files, tolerance, projectName, plotSelectedOnly = false} = project;
+  const ions = useMemo(() => withIonColorIndices(project.ions), [project.ions]);
+  const colors = ionColors(ions, readColorPalette(project.plotSettings?.colorPalette), (project.plotSettings?.traceColors ?? {}) as Record<string, string>);
   const selectedIds = useMemo(() => new Set(project.selectedFileIds), [project.selectedFileIds]);
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTab>("files");
   const [plotVisited, setPlotVisited] = useState(false);
@@ -73,7 +77,16 @@ function App() {
     window.addEventListener("keydown", exitExpandedView);
     return () => window.removeEventListener("keydown", exitExpandedView);
   }, [plotExpanded]);
-  const updateIons = (next: IonTarget[]) => patch({ions: next, ionDraft: formatIonText(next)}, "ions");
+  const updateIons = (next: IonTarget[]) => {
+    const updated = reconcileIonTargets(currentRef.current.ions, next);
+    patch({ions: updated, ionDraft: formatIonText(updated)}, "ions");
+  };
+  const updateIonColor = (ionId: string, color: string) => {
+    const settings = currentRef.current.plotSettings ?? {};
+    patch({plotSettings: {...settings, traceColors: {...(settings.traceColors as Record<string, string> ?? {}), [ionId]: color}}}, "plot");
+    // The plot owns its editing state; reopen it with the change made in Ions.
+    setPlotRevision(value => value + 1);
+  };
   const onPlotSettingsChange = useCallback((settings: Record<string, unknown>) => {
     if (JSON.stringify(currentRef.current.plotSettings ?? {}) !== JSON.stringify(settings)) patch({plotSettings: settings}, "plot");
   }, [currentRef, patch]);
@@ -191,10 +204,10 @@ function App() {
             onUpdateMetadata={updateMetadata} onApplyBulkMetadata={(field, value) => patch({files: files.map(file => selectedIds.has(file.id) ? {...file, metadata: {...file.metadata, [field]: value}} : file)})}
             onRemoveSelected={() => patch({files: files.filter(file => !selectedIds.has(file.id)), selectedFileIds: []})} />}
         </div>
-        <div id="panel-ions" role="tabpanel" aria-labelledby="tab-ions" hidden={activeWorkspaceTab !== "ions"}><WorkspacePanelBoundary name="Ions">{() => <IonSelectionPanel ions={ions} ionText={project.ionDraft ?? formatIonText(ions)} onIonTextChange={value => patch({ionDraft: value}, "ionDraft")} tolerance={tolerance} roundingPrecisions={[...new Set(files.flatMap(file => file.bruker?.mzDecimals === undefined ? [] : [file.bruker.mzDecimals]))]} canSuggestIons={files.some(file => file.peaks.length > 0)} onIonsChange={updateIons} onToleranceChange={value => patch({tolerance: value}, "tolerance")} onSuggestIons={decimals => {
+        <div id="panel-ions" role="tabpanel" aria-labelledby="tab-ions" hidden={activeWorkspaceTab !== "ions"}><WorkspacePanelBoundary name="Ions">{() => <IonSelectionPanel ions={ions} colors={colors} onColorChange={updateIonColor} ionText={project.ionDraft ?? formatIonText(ions)} onIonTextChange={value => patch({ionDraft: value}, "ionDraft")} tolerance={tolerance} roundingPrecisions={[...new Set(files.flatMap(file => file.bruker?.mzDecimals === undefined ? [] : [file.bruker.mzDecimals]))]} canSuggestIons={files.some(file => file.peaks.length > 0)} onIonsChange={updateIons} onToleranceChange={value => patch({tolerance: value}, "tolerance")} onSuggestIons={decimals => {
           const suggestions = suggestIonTargets(selectedIds.size ? files.filter(file => selectedIds.has(file.id)) : files, tolerance, 6, decimals); if (suggestions.length) updateIons(suggestions);
         }} />}</WorkspacePanelBoundary></div>
-        <div id="panel-plot" role="tabpanel" aria-labelledby="tab-plot" className="plot-panel-host" hidden={activeWorkspaceTab !== "plot"}>{plotVisited && <WorkspacePanelBoundary key={plotRevision} name="Plot">{() => <Suspense fallback={<p role="status">Loading plot tools…</p>}><PlotBuilder getProject={() => currentRef.current} onCatalogExport={catalog => patch({catalog})} powerCalibration={project.powerCalibration} onPowerCalibrationChange={powerCalibration => patch({powerCalibration})} processingBusy={processing.busy} expanded={plotExpanded} onExpandedChange={setPlotExpanded} initialSettings={project.plotSettings ?? {legendPosition: "top"}} settingsRef={plotSettingsRef} onSettingsChange={onPlotSettingsChange} projectName={projectName} files={plottedFiles} photoFiles={files} rows={plottedRows} isActive={activeWorkspaceTab === "plot"} /></Suspense>}</WorkspacePanelBoundary>}</div>
+        <div id="panel-plot" role="tabpanel" aria-labelledby="tab-plot" className="plot-panel-host" hidden={activeWorkspaceTab !== "plot"}>{plotVisited && <WorkspacePanelBoundary key={plotRevision} name="Plot">{() => <Suspense fallback={<p role="status">Loading plot tools…</p>}><PlotBuilder ions={ions} getProject={() => currentRef.current} onCatalogExport={catalog => patch({catalog})} powerCalibration={project.powerCalibration} onPowerCalibrationChange={powerCalibration => patch({powerCalibration})} processingBusy={processing.busy} expanded={plotExpanded} onExpandedChange={setPlotExpanded} initialSettings={project.plotSettings ?? {legendPosition: "top"}} settingsRef={plotSettingsRef} onSettingsChange={onPlotSettingsChange} projectName={projectName} files={plottedFiles} photoFiles={files} rows={plottedRows} isActive={activeWorkspaceTab === "plot"} /></Suspense>}</WorkspacePanelBoundary>}</div>
         <div id="panel-data" role="tabpanel" aria-labelledby="tab-data" hidden={activeWorkspaceTab !== "data"}><SegmentSpectrumExport files={files} isActive={activeWorkspaceTab === "data"} /><ProcessedDataTable rows={processing.rows} projectName={projectName} /></div>
       </div>
     </main>

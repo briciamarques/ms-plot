@@ -58,6 +58,8 @@ export function validateProjectSnapshot(value: unknown): ProjectSnapshot {
   for (const ion of value.ions) {
     requireValue(record(ion) && typeof ion.id === "string" && typeof ion.targetMz === "string" && typeof ion.label === "string", "invalid ion row");
     requireValue(!ids.has(ion.id), "duplicate ion IDs"); ids.add(ion.id);
+    if (ion.hidden !== undefined) requireValue(typeof ion.hidden === "boolean", "invalid ion visibility");
+    if (ion.colorIndex !== undefined) requireValue(Number.isSafeInteger(ion.colorIndex) && Number(ion.colorIndex) >= 0, "invalid ion color slot");
   }
   if (value.tolerance !== undefined) requireValue(finite(value.tolerance) && value.tolerance >= 0, "tolerance must be finite and nonnegative");
   const settings = value.plotSettings;

@@ -3,9 +3,12 @@ import { useState } from "react";
 import type { IonTarget } from "../types";
 import { createId } from "../utils/id";
 import { ionWarnings, validMass } from "../utils/ions";
+import { ColorControl } from "./plot/controls";
 
 type IonSelectionPanelProps = {
   ions: IonTarget[];
+  colors: Record<string, string>;
+  onColorChange: (ionId: string, color: string) => void;
   ionText: string;
   onIonTextChange: (text: string) => void;
   tolerance: number;
@@ -48,6 +51,8 @@ export const formatIonText = (ions: IonTarget[]): string =>
 
 export function IonSelectionPanel({
   ions,
+  colors,
+  onColorChange,
   ionText,
   onIonTextChange,
   tolerance,
@@ -103,6 +108,7 @@ export function IonSelectionPanel({
 
       {warnings.length > 0 && <div className="validation-notice" role="status">{warnings.map(message => <p key={message}>{message}</p>)}</div>}
       <p className="help-text">Enter one positive m/z per line, optionally followed by = label. Use a decimal point. Empty, invalid and duplicate targets are excluded.</p>
+      <p className="help-text">Choose a color for each ion or uncheck Show to hide its curve. Hidden ions remain in the percentage calculation; removing an ion changes that calculation. Other ions keep their colors.</p>
       <div className="ion-grid">
         <div className="ion-list-loader">
           <textarea
@@ -147,14 +153,21 @@ export function IonSelectionPanel({
           <table className="data-table ion-table">
             <thead>
               <tr>
+                <th>Show</th>
                 <th>Target m/z</th>
                 <th>Label</th>
+                <th>Color</th>
                 <th className="action-column"></th>
               </tr>
             </thead>
             <tbody>
               {ions.map((ion) => (
                 <tr key={ion.id}>
+                  <td>
+                    <input type="checkbox" checked={!ion.hidden}
+                      onChange={event => updateIon(ion.id, { hidden: !event.target.checked })}
+                      aria-label={`Show ion ${ion.targetMz || "new"}`} />
+                  </td>
                   <td>
                     <input
                       value={ion.targetMz}
@@ -175,6 +188,10 @@ export function IonSelectionPanel({
                       placeholder="parent ion"
                       aria-label="Ion label"
                     />
+                  </td>
+                  <td className="ion-color-cell">
+                    <ColorControl label={`Color for ion ${ion.targetMz || "new"}`} value={colors[ion.id] ?? "#0072bd"}
+                      onChange={color => onColorChange(ion.id, color)} />
                   </td>
                   <td className="action-column">
                     <button

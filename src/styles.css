@@ -558,6 +558,33 @@ label:has(input:disabled) {
   min-width: 140px;
 }
 
+.ion-table input[type="checkbox"] {
+  min-width: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.ion-table input[type="color"] {
+  min-width: 0;
+  width: 48px;
+  height: 34px;
+  padding: 3px;
+  cursor: pointer;
+}
+
+.ion-color-cell .color-field > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.ion-color-cell input[type="text"] {
+  min-width: 88px;
+  width: 88px;
+}
+
 .add-row {
   margin: 10px;
 }
